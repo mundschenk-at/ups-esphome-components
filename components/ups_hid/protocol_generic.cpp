@@ -157,7 +157,7 @@ bool GenericHidProtocol::read_data(UpsData &data) {
   if (read_report(0x16, buffer, buffer_len)) {
     // parse_present_status(buffer, buffer_len, data);
     // FIXME
-    ESP_LOGI(GEN_TAG, "Disabled present status parsing for input report 0x%02X (%zu bytes)", report_id, buffer_len);
+    ESP_LOGI(GEN_TAG, "Disabled present status parsing for input report 0x16 (%zu bytes)", buffer_len);
 
     success = true;
   }
