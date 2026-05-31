@@ -118,6 +118,15 @@ namespace esphome
             ESP_LOGD(ESP32_USB_TAG, "HID GET_REPORT: type=0x%02X, id=0x%02X, max_len=%zu",
                      report_type, report_id, *data_len);
 
+            if ( report_id == 0x16 ) {
+                ESP_LOGD(ESP32_USB_TAG, "HID GET_REPORT: Disabled report 0x16");
+                return ESP_ERR_INVALID_ARG;
+            }
+            if ( report_id == 0x30 ) {
+                ESP_LOGD(ESP32_USB_TAG, "HID GET_REPORT: Disabled report 0x30");
+                return ESP_ERR_INVALID_ARG;
+            }
+
             // Use fixed buffer sizes like working implementation
             uint8_t buffer[64] = {0}; // Fixed size buffer
             size_t expected_len = std::min(*data_len, sizeof(buffer));
@@ -202,8 +211,7 @@ namespace esphome
             {
 
 
-                ESP_LOGD(ESP32_USB_TAG, "HID GET_REPORT: type=0x%02X, id=0x%02X, max_len=%zu - ret == ESP_Ok",
-                    report_type, report_id, *data_len);
+                ESP_LOGD(ESP32_USB_TAG, "HID GET_REPORT: before xSemaphoreTake %p", done_sem);
 
                 if (xSemaphoreTake(done_sem, pdMS_TO_TICKS(timeout_ms)) == pdTRUE)
                 {
@@ -513,6 +521,8 @@ namespace esphome
             {
                 ESP_LOGW(ESP32_USB_TAG, "Failed to submit string descriptor request: %s", esp_err_to_name(ret));
             }
+
+            ESP_LOGD(ESP32_USB_TAG, "USB before vSemaphoreDelete %p", done_sem);
 
             vSemaphoreDelete(done_sem);
             usb_host_transfer_free(transfer);
