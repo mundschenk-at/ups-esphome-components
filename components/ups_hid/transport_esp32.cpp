@@ -118,6 +118,17 @@ namespace esphome
             ESP_LOGD(ESP32_USB_TAG, "HID GET_REPORT: type=0x%02X, id=0x%02X, max_len=%zu",
                      report_type, report_id, *data_len);
 
+            switch ( report_id ) {
+                case 0x16:
+                case 0x30:
+                case 0x31:
+                case 0x40:
+                case 0x50:
+                    ESP_LOGD(ESP32_USB_TAG, "HID GET_REPORT: Disabled report %zu", report_id);
+                    return ESP_ERR_INVALID_ARG;
+                    break;
+            }
+
             // Use fixed buffer sizes like working implementation
             uint8_t buffer[64] = {0}; // Fixed size buffer
             size_t expected_len = std::min(*data_len, sizeof(buffer));
