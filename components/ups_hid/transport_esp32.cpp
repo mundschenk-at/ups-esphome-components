@@ -38,6 +38,8 @@ namespace esphome
 
             ESP_LOGI(ESP32_USB_TAG, "Initializing ESP32 USB transport");
 
+            done_sem = xSemaphoreCreateBinary();
+
             esp_err_t ret = setup_usb_host();
             if (ret != ESP_OK)
             {
@@ -70,6 +72,11 @@ namespace esphome
             }
 
             ESP_LOGI(ESP32_USB_TAG, "Deinitializing ESP32 USB transport");
+
+            if (done_sem) {
+                vSemaphoreDelete(done_sem);
+                done_sem = nullptr;
+            }
 
             connected_ = false;
             initialized_ = false;
@@ -126,6 +133,18 @@ namespace esphome
                 ESP_LOGD(ESP32_USB_TAG, "HID GET_REPORT: Disabled report 0x30");
                 return ESP_ERR_INVALID_ARG;
             }
+            if ( report_id == 0x31 ) {
+                ESP_LOGD(ESP32_USB_TAG, "HID GET_REPORT: Disabled report 0x31");
+                return ESP_ERR_INVALID_ARG;
+            }
+            if ( report_id == 0x40 ) {
+                ESP_LOGD(ESP32_USB_TAG, "HID GET_REPORT: Disabled report 0x40");
+                return ESP_ERR_INVALID_ARG;
+            }
+            if ( report_id == 0x50 ) {
+                ESP_LOGD(ESP32_USB_TAG, "HID GET_REPORT: Disabled report 0x50");
+                return ESP_ERR_INVALID_ARG;
+            }
 
             // Use fixed buffer sizes like working implementation
             uint8_t buffer[64] = {0}; // Fixed size buffer
@@ -167,7 +186,7 @@ namespace esphome
             setup->wLength = wLength;
 
             // Use semaphore for synchronous operation
-            SemaphoreHandle_t done_sem = xSemaphoreCreateBinary();
+            //SemaphoreHandle_t done_sem = xSemaphoreCreateBinary();
             if (!done_sem)
             {
                 usb_host_transfer_free(transfer);
@@ -195,6 +214,8 @@ namespace esphome
                 c->result = (t->status == USB_TRANSFER_STATUS_COMPLETED) ? ESP_OK : ESP_FAIL;
                 c->actual_bytes = t->actual_num_bytes;
                 xSemaphoreGive(c->sem);
+
+                ESP_LOGD(ESP32_USB_TAG, "Finished usb_transfer callback 2");
             };
 
             ESP_LOGD(ESP32_USB_TAG, "HID GET_REPORT: type=0x%02X, id=0x%02X, max_len=%zu - before usb_host_transfer_submit_control",
@@ -211,7 +232,7 @@ namespace esphome
             {
 
 
-                ESP_LOGD(ESP32_USB_TAG, "HID GET_REPORT: before xSemaphoreTake %p", done_sem);
+                ESP_LOGD(ESP32_USB_TAG, "HID GET_REPORT: before xSemaphoreTake %p, count %zu", done_sem, uxSemaphoreGetCount(done_sem));
 
                 if (xSemaphoreTake(done_sem, pdMS_TO_TICKS(timeout_ms)) == pdTRUE)
                 {
@@ -254,7 +275,7 @@ namespace esphome
                 ESP_LOGW(ESP32_USB_TAG, "Failed to submit HID GET_REPORT: %s", esp_err_to_name(ret));
             }
 
-            vSemaphoreDelete(done_sem);
+            //vSemaphoreDelete(done_sem);
             usb_host_transfer_free(transfer);
 
             ESP_LOGD(ESP32_USB_TAG, "HID GET_REPORT: type=0x%02X, id=0x%02X, max_len=%zu - after usb_host_transfer_free",
@@ -317,7 +338,7 @@ namespace esphome
             memcpy(transfer->data_buffer + sizeof(usb_setup_packet_t), data, data_len);
 
             // Use semaphore for synchronous operation
-            SemaphoreHandle_t done_sem = xSemaphoreCreateBinary();
+            //SemaphoreHandle_t done_sem = xSemaphoreCreateBinary();
             if (!done_sem)
             {
                 usb_host_transfer_free(transfer);
@@ -337,11 +358,15 @@ namespace esphome
                 auto *c = static_cast<decltype(ctx) *>(t->context);
                 c->result = (t->status == USB_TRANSFER_STATUS_COMPLETED) ? ESP_OK : ESP_FAIL;
                 xSemaphoreGive(c->sem);
+
+                ESP_LOGD(ESP32_USB_TAG, "Finished usb_transfer callback 1");
             };
 
             ret = usb_host_transfer_submit_control(device_.client_hdl, transfer);
             if (ret == ESP_OK)
             {
+                ESP_LOGD(ESP32_USB_TAG, "HID SET_REPORT: before xSemaphoreTake %p, count %zu", done_sem, uxSemaphoreGetCount(done_sem));
+
                 if (xSemaphoreTake(done_sem, pdMS_TO_TICKS(timeout_ms)) == pdTRUE)
                 {
                     ret = ctx.result;
@@ -365,7 +390,7 @@ namespace esphome
                 ESP_LOGW(ESP32_USB_TAG, "Failed to submit HID SET_REPORT: %s", esp_err_to_name(ret));
             }
 
-            vSemaphoreDelete(done_sem);
+            //vSemaphoreDelete(done_sem);
             usb_host_transfer_free(transfer);
             return ret;
         }
@@ -420,7 +445,7 @@ namespace esphome
             setup->wLength = wLength;
 
             // Use semaphore for synchronous operation
-            SemaphoreHandle_t done_sem = xSemaphoreCreateBinary();
+            //SemaphoreHandle_t done_sem = xSemaphoreCreateBinary();
             if (!done_sem)
             {
                 usb_host_transfer_free(transfer);
@@ -442,6 +467,8 @@ namespace esphome
                 c->result = (t->status == USB_TRANSFER_STATUS_COMPLETED) ? ESP_OK : ESP_FAIL;
                 c->actual_bytes = t->actual_num_bytes;
                 xSemaphoreGive(c->sem);
+
+                    ESP_LOGD(ESP32_USB_TAG, "Finished usb_transfer callback 3");
             };
 
             ret = usb_host_transfer_submit_control(device_.client_hdl, transfer);
@@ -522,9 +549,7 @@ namespace esphome
                 ESP_LOGW(ESP32_USB_TAG, "Failed to submit string descriptor request: %s", esp_err_to_name(ret));
             }
 
-            ESP_LOGD(ESP32_USB_TAG, "USB before vSemaphoreDelete %p", done_sem);
-
-            vSemaphoreDelete(done_sem);
+            //vSemaphoreDelete(done_sem);
             usb_host_transfer_free(transfer);
             return ret;
         }
