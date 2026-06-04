@@ -14,8 +14,8 @@ public:
         ESP32_HARDWARE,
         SIMULATION
     };
-    
-    static std::unique_ptr<IUsbTransport> create(TransportType type, 
+
+    static std::unique_ptr<IUsbTransport> create(TransportType type,
                                                bool simulation_mode = false);
 };
 

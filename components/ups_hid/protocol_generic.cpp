@@ -24,7 +24,7 @@ static const uint8_t COMMON_REPORT_IDS[] = {
   0x0C, // Power summary (battery % + runtime)
   0x16, // Present status bitmap
   0x30, // Input measurements
-  0x31, // Output measurements  
+  0x31, // Output measurements
   0x40, // Battery system
   0x50, // Load percentage
 };
@@ -41,31 +41,31 @@ static const uint8_t EXTENDED_REPORT_IDS[] = {
 
 bool GenericHidProtocol::detect() {
   ESP_LOGD(GEN_TAG, "Detecting Generic HID Protocol...");
-  
+
   // Check device connection status first
   if (!parent_->is_connected()) {
     ESP_LOGD(GEN_TAG, "Device not connected, skipping protocol detection");
     return false;
   }
-  
+
   // Check if this is a known vendor that should use a specific protocol
   uint16_t vid = parent_->get_vendor_id();
   if (vid == usb::VENDOR_ID_APC || vid == usb::VENDOR_ID_CYBERPOWER) { // APC or CyberPower
     ESP_LOGD(GEN_TAG, "Known vendor 0x%04X should use specific protocol", vid);
     return false;
   }
-  
+
   // Try common report IDs to detect HID Power Device
   uint8_t buffer[limits::MIN_HID_REPORT_SIZE];
   size_t buffer_len;
-  
+
   for (uint8_t report_id : COMMON_REPORT_IDS) {
     // Check connection status before each attempt
     if (!parent_->is_connected()) {
       ESP_LOGD(GEN_TAG, "Device disconnected during protocol detection");
       return false;
     }
-    
+
     // Try Input Report first (real-time data)
     buffer_len = sizeof(buffer);
     esp_err_t ret = parent_->hid_get_report(HID_REPORT_TYPE_INPUT, report_id, buffer, &buffer_len, parent_->get_protocol_timeout());
@@ -75,13 +75,13 @@ bool GenericHidProtocol::detect() {
       report_sizes_[report_id] = buffer_len;
       return true;
     }
-    
+
     // Check connection again before trying Feature report
     if (!parent_->is_connected()) {
       ESP_LOGD(GEN_TAG, "Device disconnected during protocol detection");
       return false;
     }
-    
+
     // Try Feature Report (static/configuration data)
     buffer_len = sizeof(buffer);
     ret = parent_->hid_get_report(HID_REPORT_TYPE_FEATURE, report_id, buffer, &buffer_len, parent_->get_protocol_timeout());
@@ -91,34 +91,34 @@ bool GenericHidProtocol::detect() {
       report_sizes_[report_id] = buffer_len;
       return true;
     }
-    
+
     // Small delay to avoid overwhelming the device
     vTaskDelay(pdMS_TO_TICKS(timing::EXTENDED_DISCOVERY_DELAY_MS));
   }
-  
+
   ESP_LOGD(GEN_TAG, "No standard HID Power Device reports found");
   return false;
 }
 
 bool GenericHidProtocol::initialize() {
   ESP_LOGD(GEN_TAG, "Initializing Generic HID Protocol...");
-  
+
   // Clear any previous state
   available_input_reports_.clear();
   available_feature_reports_.clear();
   report_sizes_.clear();
-  
+
   // Enumerate available reports
   enumerate_reports();
-  
+
   if (available_input_reports_.empty() && available_feature_reports_.empty()) {
     ESP_LOGE(GEN_TAG, "No HID reports found during initialization");
     return false;
   }
-  
+
   ESP_LOGI(GEN_TAG, "Generic HID initialized with %zu input and %zu feature reports",
            available_input_reports_.size(), available_feature_reports_.size());
-  
+
   // Log discovered reports for debugging
   ESP_LOGD(GEN_TAG, "Input reports:");
   for (uint8_t id : available_input_reports_) {
@@ -128,37 +128,37 @@ bool GenericHidProtocol::initialize() {
   for (uint8_t id : available_feature_reports_) {
     ESP_LOGD(GEN_TAG, "  0x%02X: %zu bytes", id, report_sizes_[id]);
   }
-  
+
   return true;
 }
 
 bool GenericHidProtocol::read_data(UpsData &data) {
   ESP_LOGV(GEN_TAG, "Reading Generic HID UPS data...");
-  
+
   bool success = false;
   uint8_t buffer[limits::MAX_HID_REPORT_SIZE];
   size_t buffer_len;
-  
+
   // Try to read known report types in priority order
-  
+
   // 1. Power Summary (0x0C) - Battery % and runtime (highest priority)
   if (read_report(0x0C, buffer, buffer_len)) {
     parse_power_summary(buffer, buffer_len, data);
     success = true;
   }
-  
+
   // 2. Battery status (0x06) - Alternative battery info
   if (read_report(0x06, buffer, buffer_len)) {
     parse_battery_status(buffer, buffer_len, data);
     success = true;
   }
-  
+
   // 3. Present Status (0x16) - Status flags
   if (read_report(0x16, buffer, buffer_len)) {
     parse_present_status(buffer, buffer_len, data);
     success = true;
   }
-  
+
   // 4. General status (0x01) - Common status report
   if (read_report(0x01, buffer, buffer_len)) {
     parse_general_status(buffer, buffer_len, data);

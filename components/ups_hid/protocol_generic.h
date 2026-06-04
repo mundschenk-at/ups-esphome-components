@@ -11,10 +11,10 @@ namespace ups_hid {
 
 /**
  * Generic HID Protocol Implementation
- * 
+ *
  * Provides fallback support for unknown UPS vendors by attempting to
  * discover and parse common HID Power Device report IDs.
- * 
+ *
  * This protocol uses a discovery-based approach, testing standard report IDs
  * that are commonly used across different UPS manufacturers based on NUT
  * (Network UPS Tools) analysis.
@@ -25,18 +25,18 @@ public:
     ~GenericHidProtocol() override = default;
 
     // Protocol identification
-    DeviceInfo::DetectedProtocol get_protocol_type() const override { 
-        return DeviceInfo::PROTOCOL_GENERIC_HID; 
+    DeviceInfo::DetectedProtocol get_protocol_type() const override {
+        return DeviceInfo::PROTOCOL_GENERIC_HID;
     }
-    std::string get_protocol_name() const override { 
-        return "Generic HID"; 
+    std::string get_protocol_name() const override {
+        return "Generic HID";
     }
 
     // Core protocol interface
     bool detect() override;
     bool initialize() override;
     bool read_data(UpsData &data) override;
-    
+
     // Delay configuration methods
     bool set_shutdown_delay(int seconds) override;
     bool set_start_delay(int seconds) override;
@@ -54,11 +54,11 @@ public:
     void parse_voltage(uint8_t* data, size_t len, UpsData& ups_data, bool is_input);
     void parse_input_sensitivity(uint8_t* data, size_t len, UpsData& ups_data, const char* style);
     bool parse_unknown_report(uint8_t* data, size_t len, UpsData& ups_data);
-    
+
     // Frequency reading methods
     void read_frequency_data(UpsData &data);
     float parse_frequency_from_report(uint8_t* data, size_t len);
-    
+
     // Configuration reading methods
     void read_delay_configuration(UpsData &data);
     void read_beeper_status(UpsData &data);
@@ -84,5 +84,5 @@ private:
     std::map<uint8_t, size_t> report_sizes_;
 };
 
-} // namespace ups_hid  
+} // namespace ups_hid
 } // namespace esphome

@@ -12,7 +12,7 @@ std::unique_ptr<IUsbTransport> UsbTransportFactory::create(TransportType type, b
     if (simulation_mode || type == SIMULATION) {
         return std::make_unique<SimulatedTransport>();
     }
-    
+
 #ifdef USE_ESP32
     if (type == ESP32_HARDWARE) {
         return std::make_unique<Esp32UsbTransport>();
