@@ -125,6 +125,7 @@ namespace esphome
             ESP_LOGD(ESP32_USB_TAG, "HID GET_REPORT: type=0x%02X, id=0x%02X, max_len=%zu",
                      report_type, report_id, *data_len);
 
+            /*
             if ( report_id == 0x16 ) {
                 ESP_LOGD(ESP32_USB_TAG, "HID GET_REPORT: Disabled report 0x16");
                 return ESP_ERR_INVALID_ARG;
@@ -144,7 +145,7 @@ namespace esphome
             if ( report_id == 0x50 ) {
                 ESP_LOGD(ESP32_USB_TAG, "HID GET_REPORT: Disabled report 0x50");
                 return ESP_ERR_INVALID_ARG;
-            }
+            }*/
 
             // Use fixed buffer sizes like working implementation
             uint8_t buffer[64] = {0}; // Fixed size buffer
