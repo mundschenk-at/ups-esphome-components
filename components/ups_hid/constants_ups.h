@@ -12,17 +12,17 @@ namespace timing {
     static constexpr uint32_t REPORT_DISCOVERY_DELAY_MS = 5;
     static constexpr uint32_t EXTENDED_DISCOVERY_DELAY_MS = 10;
     static constexpr uint32_t PROTOCOL_DETECTION_DELAY_MS = 100;
-    
+
     static constexpr uint32_t MIN_PROTOCOL_TIMEOUT_MS = 5000;      // 5 seconds
     static constexpr uint32_t MAX_PROTOCOL_TIMEOUT_MS = 300000;    // 5 minutes
     static constexpr uint32_t DEFAULT_HID_TIMEOUT_MS = 1000;       // 1 second
-    
+
     static constexpr uint32_t ERROR_RATE_LIMIT_WINDOW_MS = 5000;   // 5 seconds
     static constexpr uint32_t MAX_ERRORS_PER_WINDOW = 3;
-    
+
     // USB operation timeouts
     static constexpr uint32_t USB_CONTROL_TRANSFER_TIMEOUT_MS = 1000;  // 1 second
-    static constexpr uint32_t USB_SEMAPHORE_TIMEOUT_MS = 1000;         // 1 second  
+    static constexpr uint32_t USB_SEMAPHORE_TIMEOUT_MS = 1000;         // 1 second
     static constexpr uint32_t USB_CLIENT_EVENT_TIMEOUT_MS = 100;       // 100ms for event polling
 }
 
@@ -32,7 +32,7 @@ namespace limits {
     static constexpr uint32_t MAX_PROTOCOL_DETECTION_ATTEMPTS = 3;
     static constexpr uint32_t MAX_DISCOVERY_ATTEMPTS = 3;
     static constexpr uint32_t MAX_EXTENDED_DISCOVERY_ATTEMPTS = 10;
-    
+
     static constexpr size_t MAX_HID_REPORT_SIZE = 64;
     static constexpr size_t MIN_HID_REPORT_SIZE = 8;
     static constexpr size_t USB_STRING_DESCRIPTOR_MAX_LENGTH = 256;
@@ -90,7 +90,7 @@ namespace battery_status {
     static constexpr const char* NOT_PRESENT = "Not Present";
     static constexpr const char* FAULT = "Fault";
     static constexpr const char* UNKNOWN = "Unknown";
-    
+
     // Battery status suffixes (append to base status)
     static constexpr const char* TIME_LIMIT_EXPIRED_SUFFIX = " - Time Limit Expired";
     static constexpr const char* REPLACE_BATTERY_SUFFIX = " - Replace Battery";
@@ -109,10 +109,10 @@ namespace battery_chemistry {
     static constexpr const char* LITHIUM_ION = "LiIon";         // Chemistry code 5
     static constexpr const char* LITHIUM_POLYMER = "LiPoly";    // Chemistry code 6
     static constexpr const char* UNKNOWN = battery_status::UNKNOWN;
-    
+
     // Common HID report ID for battery chemistry (used by both APC and CyberPower)
     static constexpr uint8_t REPORT_ID = 0x03;
-    
+
     // Chemistry ID constants (HID standard values)
     static constexpr uint8_t ID_ALKALINE = 1;
     static constexpr uint8_t ID_NICD = 2;
@@ -120,7 +120,7 @@ namespace battery_chemistry {
     static constexpr uint8_t ID_LEAD_ACID = 4;
     static constexpr uint8_t ID_LITHIUM_ION = 5;
     static constexpr uint8_t ID_LITHIUM_POLYMER = 6;
-    
+
     // Helper function to convert chemistry ID to string
     inline const char* id_to_string(uint8_t chemistry_id) {
         switch (chemistry_id) {
@@ -141,7 +141,7 @@ namespace beeper {
     static constexpr const char* ACTION_DISABLE = "disable";
     static constexpr const char* ACTION_MUTE = "mute";
     static constexpr const char* ACTION_TEST = "test";
-    
+
     // Beeper control values
     static constexpr uint8_t CONTROL_DISABLE = 0x01;
     static constexpr uint8_t CONTROL_ENABLE = 0x02;
@@ -155,12 +155,12 @@ namespace test {
     static constexpr const char* ACTION_BATTERY_STOP = "battery_stop";
     static constexpr const char* ACTION_UPS_TEST = "ups_test";
     static constexpr const char* ACTION_UPS_STOP = "ups_stop";
-    
+
     // Test command values
     static constexpr uint8_t COMMAND_QUICK = 1;
     static constexpr uint8_t COMMAND_DEEP = 2;
     static constexpr uint8_t COMMAND_ABORT = 3;
-    
+
     // Test result status strings (shared by APC and CyberPower)
     static constexpr const char* RESULT_DONE_PASSED = "Done and passed";
     static constexpr const char* RESULT_DONE_WARNING = "Done and warning";
@@ -239,6 +239,7 @@ namespace sensitivity {
 namespace protocol {
     static constexpr const char* APC_HID = "APC HID";
     static constexpr const char* CYBERPOWER = "CyberPower";
+    static constexpr const char* EATON = "Eaton";
     static constexpr const char* GENERIC = "Generic";
     static constexpr const char* NONE = "None";
 }
@@ -248,10 +249,11 @@ namespace usb {
     // Common vendor IDs
     static constexpr uint16_t VENDOR_ID_APC = 0x051D;
     static constexpr uint16_t VENDOR_ID_CYBERPOWER = 0x0764;
-    
+    static constexpr uint16_t VENDOR_ID_EATON = 0x0463;
+
     // Common product IDs
     static constexpr uint16_t PRODUCT_ID_APC_BACK_UPS_ES_700 = 0x0002; // Back-UPS ES 700G (INPUT-ONLY)
-    
+
     // Common HID report IDs used across multiple UPS vendors
     static constexpr uint8_t REPORT_ID_SERIAL_NUMBER = 0x02;  // Serial number string descriptor index
 }

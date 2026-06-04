@@ -8,7 +8,8 @@
 #include "protocol_factory.h"
 #include "protocol_apc.h"
 #include "protocol_cyberpower.h"
- 
+#include "protocol_eaton.h"
+
 #include "protocol_generic.h"
 #include "esphome/core/log.h"
 #include "esphome/core/application.h"
@@ -20,13 +21,13 @@ namespace ups_hid {
 
 void UpsHidComponent::setup() {
   ESP_LOGCONFIG(TAG, log_messages::SETTING_UP);
-  
+
   if (!initialize_transport()) {
     ESP_LOGE(TAG, log_messages::TRANSPORT_INIT_FAILED);
     mark_failed();
     return;
   }
-  
+
   // Protocol detection is deferred to update() method to handle asynchronous USB enumeration
   ESP_LOGCONFIG(TAG, log_messages::SETUP_COMPLETE);
 }
@@ -37,7 +38,7 @@ void UpsHidComponent::update() {
     ESP_LOGD(TAG, log_messages::WAITING_FOR_DEVICE);
     return;
   }
-  
+
   // Check if protocol detection is needed
   if (!active_protocol_) {
     ESP_LOGI(TAG, log_messages::ATTEMPTING_DETECTION);
@@ -47,7 +48,7 @@ void UpsHidComponent::update() {
     } else {
       consecutive_failures_++;
       ESP_LOGW(TAG, log_messages::DETECTION_FAILED, consecutive_failures_);
-      
+
       if (consecutive_failures_ > max_consecutive_failures_) {
         ESP_LOGE(TAG, log_messages::TOO_MANY_FAILURES);
         mark_failed();
@@ -55,19 +56,19 @@ void UpsHidComponent::update() {
       return;
     }
   }
-  
+
   // Normal data reading with active protocol
   if (read_ups_data()) {
     update_sensors();
     consecutive_failures_ = 0;
     last_successful_read_ = millis();
-    
+
     // Check for timer updates (fast polling during countdowns)
     check_and_update_timers();
   } else {
     consecutive_failures_++;
     ESP_LOGW(TAG, log_messages::READ_FAILED, consecutive_failures_);
-    
+
     if (consecutive_failures_ > max_consecutive_failures_) {
       ESP_LOGW(TAG, log_messages::RESETTING_PROTOCOL);
       active_protocol_.reset();  // Force protocol re-detection on next update
@@ -79,12 +80,12 @@ void UpsHidComponent::update() {
 void UpsHidComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "UPS HID Component:");
   ESP_LOGCONFIG(TAG, "  Simulation Mode: %s", simulation_mode_ ? status::YES : status::NO);
-  
+
   if (transport_ && transport_->is_connected()) {
     ESP_LOGCONFIG(TAG, "  USB Vendor ID: 0x%04X", transport_->get_vendor_id());
     ESP_LOGCONFIG(TAG, "  USB Product ID: 0x%04X", transport_->get_product_id());
   }
-  
+
   ESP_LOGCONFIG(TAG, "  Protocol Timeout: %u ms", protocol_timeout_ms_);
   ESP_LOGCONFIG(TAG, "  Protocol Selection: %s", protocol_selection_.c_str());
   ESP_LOGCONFIG(TAG, "  Update Interval: %u ms", get_update_interval());
@@ -92,7 +93,7 @@ void UpsHidComponent::dump_config() {
   if (transport_ && transport_->is_connected()) {
     ESP_LOGCONFIG(TAG, "  Status: %s", status::CONNECTED);
     if (active_protocol_) {
-      ESP_LOGCONFIG(TAG, "  Active Protocol: %s", 
+      ESP_LOGCONFIG(TAG, "  Active Protocol: %s",
                    active_protocol_->get_protocol_name().c_str());
     } else {
       ESP_LOGCONFIG(TAG, "  Protocol Status: %s", status::DETECTION_PENDING);
@@ -113,8 +114,8 @@ void UpsHidComponent::dump_config() {
 }
 
 // Transport abstraction methods
-esp_err_t UpsHidComponent::hid_get_report(uint8_t report_type, uint8_t report_id, 
-                                         uint8_t* data, size_t* data_len, 
+esp_err_t UpsHidComponent::hid_get_report(uint8_t report_type, uint8_t report_id,
+                                         uint8_t* data, size_t* data_len,
                                          uint32_t timeout_ms) {
   if (!transport_) {
     return ESP_ERR_INVALID_STATE;
@@ -153,31 +154,31 @@ uint16_t UpsHidComponent::get_product_id() const {
 // Core implementation methods
 bool UpsHidComponent::initialize_transport() {
   ESP_LOGD(TAG, "Initializing transport layer");
-  
+
   // Create appropriate transport
-  auto transport_type = simulation_mode_ ? 
-    UsbTransportFactory::SIMULATION : 
+  auto transport_type = simulation_mode_ ?
+    UsbTransportFactory::SIMULATION :
     UsbTransportFactory::ESP32_HARDWARE;
-    
+
   transport_ = UsbTransportFactory::create(transport_type, simulation_mode_);
-  
+
   if (!transport_) {
     ESP_LOGE(TAG, "Failed to create transport instance");
     return false;
   }
-  
+
   esp_err_t ret = transport_->initialize();
   if (ret != ESP_OK) {
     ESP_LOGE(TAG, "Transport initialization failed: %s", transport_->get_last_error().c_str());
     transport_.reset();
     return false;
   }
-  
+
   connected_ = transport_->is_connected();
-  
-  ESP_LOGI(TAG, "Transport initialized successfully (VID=0x%04X, PID=0x%04X)", 
+
+  ESP_LOGI(TAG, "Transport initialized successfully (VID=0x%04X, PID=0x%04X)",
            transport_->get_vendor_id(), transport_->get_product_id());
-  
+
   return true;
 }
 
@@ -186,9 +187,9 @@ bool UpsHidComponent::detect_protocol() {
     ESP_LOGE(TAG, "Cannot detect protocol - transport not connected");
     return false;
   }
-  
+
   uint16_t vendor_id = transport_->get_vendor_id();
-  
+
   if (protocol_selection_ == "auto") {
     // Automatic protocol detection based on vendor ID
     ESP_LOGD(TAG, "Auto-detecting protocol for vendor 0x%04X using factory", vendor_id);
@@ -198,31 +199,31 @@ bool UpsHidComponent::detect_protocol() {
     ESP_LOGD(TAG, "Using manually selected protocol: %s", protocol_selection_.c_str());
     active_protocol_ = ProtocolFactory::create_by_name(protocol_selection_, this);
   }
-  
+
   if (!active_protocol_) {
-    ESP_LOGE(TAG, "Failed to create protocol (selection: %s, vendor: 0x%04X)", 
+    ESP_LOGE(TAG, "Failed to create protocol (selection: %s, vendor: 0x%04X)",
              protocol_selection_.c_str(), vendor_id);
     return false;
   }
-  
+
   ESP_LOGI(TAG, "Successfully created protocol: %s", active_protocol_->get_protocol_name().c_str());
-  
+
   // Initialize the protocol (detection already done by factory)
   if (!active_protocol_->initialize()) {
     ESP_LOGE(TAG, "Protocol initialization failed");
     active_protocol_.reset();
     return false;
   }
-  
-  ESP_LOGI(TAG, "Protocol initialized: %s", 
+
+  ESP_LOGI(TAG, "Protocol initialized: %s",
            active_protocol_->get_protocol_name().c_str());
-  
+
   // Set the detected protocol in ups_data_ after successful detection
   {
     std::lock_guard<std::mutex> lock(data_mutex_);
     ups_data_.device.detected_protocol = active_protocol_->get_protocol_type();
   }
-  
+
   return true;
 }
 
@@ -231,33 +232,33 @@ bool UpsHidComponent::read_ups_data() {
     ESP_LOGW(TAG, "No active protocol for reading data");
     return false;
   }
-  
+
   std::lock_guard<std::mutex> lock(data_mutex_);
-  
+
   // Preserve the detected protocol before reset
   DeviceInfo::DetectedProtocol current_protocol = ups_data_.device.detected_protocol;
-  
+
   // Reset data before reading
   ups_data_.reset();
-  
+
   // Restore the detected protocol after reset
   ups_data_.device.detected_protocol = current_protocol;
-  
+
   // Read data through protocol
   bool success = active_protocol_->read_data(ups_data_);
-  
+
   if (success) {
     ESP_LOGV(TAG, "Successfully read UPS data");
   } else {
     ESP_LOGW(TAG, "Failed to read UPS data via protocol");
   }
-  
+
   return success;
 }
 
 void UpsHidComponent::update_sensors() {
   std::lock_guard<std::mutex> lock(data_mutex_);
-  
+
   // Check if any sensors are registered - if not, skip sensor updates
   size_t total_sensors = 0;
 #ifdef USE_SENSOR
@@ -269,24 +270,24 @@ void UpsHidComponent::update_sensors() {
 #ifdef USE_TEXT_SENSOR
   total_sensors += text_sensors_.size();
 #endif
-  
+
   if (total_sensors == 0) {
     // Data provider mode - no sensor entities, just providing data for direct access
     ESP_LOGVV(TAG, "Data provider mode: no sensors registered, data available via direct access methods");
     return;
   }
-  
+
   ESP_LOGVV(TAG, "Updating %zu registered sensor entities", total_sensors);
-  
+
   // Update all registered sensors with current data
-#ifdef USE_SENSOR  
+#ifdef USE_SENSOR
   for (auto& sensor_pair : sensors_) {
     const std::string& type = sensor_pair.first;
     sensor::Sensor* sensor = sensor_pair.second;
-    
+
     // Extract appropriate value based on sensor type
     float value = NAN;
-    
+
     if (type == sensor_type::BATTERY_LEVEL && ups_data_.battery.is_valid()) {
       value = ups_data_.battery.level;
     } else if (type == sensor_type::BATTERY_VOLTAGE && !std::isnan(ups_data_.battery.voltage)) {
@@ -326,21 +327,21 @@ void UpsHidComponent::update_sensors() {
     } else if (type == sensor_type::UPS_TIMER_START && ups_data_.test.timer_start != -1) {
       value = ups_data_.test.timer_start;
     }
-    
+
     if (!std::isnan(value)) {
       sensor->publish_state(value);
     }
   }
 #endif
-  
+
   // Update binary sensors
 #ifdef USE_BINARY_SENSOR
   for (auto& sensor_pair : binary_sensors_) {
     const std::string& type = sensor_pair.first;
     binary_sensor::BinarySensor* sensor = sensor_pair.second;
-    
+
     bool state = false;
-    
+
     if (type == binary_sensor_type::ONLINE && ups_data_.power.input_voltage_valid()) {
       state = true;
     } else if (type == binary_sensor_type::ON_BATTERY && ups_data_.power.input_voltage_valid()) {
@@ -348,19 +349,19 @@ void UpsHidComponent::update_sensors() {
     } else if (type == binary_sensor_type::LOW_BATTERY) {
       state = ups_data_.battery.is_low();
     }
-    
+
     sensor->publish_state(state);
   }
 #endif
-  
+
   // Update text sensors
-#ifdef USE_TEXT_SENSOR  
+#ifdef USE_TEXT_SENSOR
   for (auto& sensor_pair : text_sensors_) {
     const std::string& type = sensor_pair.first;
     text_sensor::TextSensor* sensor = sensor_pair.second;
-    
+
     std::string value = "";
-    
+
     if (type == text_sensor_type::MODEL && !ups_data_.device.model.empty()) {
       value = ups_data_.device.model;
     } else if (type == text_sensor_type::MANUFACTURER && !ups_data_.device.manufacturer.empty()) {
@@ -390,13 +391,13 @@ void UpsHidComponent::update_sensors() {
     } else if (type == text_sensor_type::UPS_FIRMWARE_AUX && !ups_data_.device.firmware_aux.empty()) {
       value = ups_data_.device.firmware_aux;
     }
-    
+
     if (!value.empty()) {
       sensor->publish_state(value);
     }
   }
 #endif
-  
+
   // Update delay number components
   for (auto* delay_number : delay_numbers_) {
     if (delay_number != nullptr) {
@@ -406,7 +407,7 @@ void UpsHidComponent::update_sensors() {
       // The number component will query the appropriate value
     }
   }
-  
+
   // Log sensor counts (conditional on platform availability)
 #ifdef USE_SENSOR
   size_t sensor_count = sensors_.size();
@@ -414,7 +415,7 @@ void UpsHidComponent::update_sensors() {
   size_t sensor_count = 0;
 #endif
 #ifdef USE_BINARY_SENSOR
-  size_t binary_sensor_count = binary_sensors_.size(); 
+  size_t binary_sensor_count = binary_sensors_.size();
 #else
   size_t binary_sensor_count = 0;
 #endif
@@ -423,8 +424,8 @@ void UpsHidComponent::update_sensors() {
 #else
   size_t text_sensor_count = 0;
 #endif
-  
-  ESP_LOGV(TAG, "Updated %zu sensors, %zu binary sensors, %zu text sensors", 
+
+  ESP_LOGV(TAG, "Updated %zu sensors, %zu binary sensors, %zu text sensors",
            sensor_count, binary_sensor_count, text_sensor_count);
 }
 
@@ -566,27 +567,27 @@ std::string UpsHidComponent::get_protocol_name() const {
 // Error rate limiting helpers
 bool UpsHidComponent::should_log_error(ErrorRateLimit& limiter) {
   uint32_t now = millis();
-  
+
   if (limiter.error_count < ErrorRateLimit::MAX_BURST) {
     limiter.error_count++;
     limiter.last_error_time = now;
     return true;
   }
-  
+
   if (now - limiter.last_error_time > ErrorRateLimit::RATE_LIMIT_MS) {
     limiter.error_count = 1;
     limiter.suppressed_count = 0;
     limiter.last_error_time = now;
     return true;
   }
-  
+
   limiter.suppressed_count++;
   return false;
 }
 
 void UpsHidComponent::log_suppressed_errors(ErrorRateLimit& limiter) {
   if (limiter.suppressed_count > 0) {
-    ESP_LOGW(TAG, "Suppressed %u similar errors in the last %u ms", 
+    ESP_LOGW(TAG, "Suppressed %u similar errors in the last %u ms",
              limiter.suppressed_count, ErrorRateLimit::RATE_LIMIT_MS);
     limiter.suppressed_count = 0;
   }
@@ -597,22 +598,22 @@ void UpsHidComponent::cleanup() {
     transport_->deinitialize();
     transport_.reset();
   }
-  
+
   active_protocol_.reset();
   connected_ = false;
-  
+
   ESP_LOGD(TAG, "Component cleanup completed");
 }
 
 // Timer polling implementation
 void UpsHidComponent::check_and_update_timers() {
   if (!active_protocol_) return;
-  
+
   uint32_t now = millis();
-  
+
   // Check if we need to poll timers
   bool should_poll_timers = false;
-  
+
   if (fast_polling_mode_) {
     // In fast polling mode, check every 2 seconds
     if (now - last_timer_poll_ >= FAST_POLL_INTERVAL_MS) {
@@ -624,10 +625,10 @@ void UpsHidComponent::check_and_update_timers() {
       should_poll_timers = true;
     }
   }
-  
+
   if (should_poll_timers) {
     last_timer_poll_ = now;
-    
+
     // Try to read timer data
     UpsData timer_data = ups_data_;  // Copy current data
     if (active_protocol_->read_timer_data(timer_data)) {
@@ -638,13 +639,13 @@ void UpsHidComponent::check_and_update_timers() {
         ups_data_.test.timer_start = timer_data.test.timer_start;
         ups_data_.test.timer_reboot = timer_data.test.timer_reboot;
       }
-      
+
       // Update fast polling mode based on timer activity
       bool timers_active = has_active_timers();
       if (timers_active != fast_polling_mode_) {
         set_fast_polling_mode(timers_active);
       }
-      
+
       // Update timer sensors immediately when values change
       update_sensors();
     }
@@ -653,8 +654,8 @@ void UpsHidComponent::check_and_update_timers() {
 
 bool UpsHidComponent::has_active_timers() const {
   std::lock_guard<std::mutex> lock(data_mutex_);
-  return (ups_data_.test.timer_shutdown > 0 || 
-          ups_data_.test.timer_start > 0 || 
+  return (ups_data_.test.timer_shutdown > 0 ||
+          ups_data_.test.timer_start > 0 ||
           ups_data_.test.timer_reboot > 0);
 }
 
@@ -691,16 +692,16 @@ bool UpsHidComponent::is_low_battery() const {
 bool UpsHidComponent::is_charging() const {
   std::lock_guard<std::mutex> lock(data_mutex_);
   // Charging when online AND battery level is not 100%
-  return ups_data_.power.input_voltage_valid() && 
-         ups_data_.battery.is_valid() && 
-         !std::isnan(ups_data_.battery.level) && 
+  return ups_data_.power.input_voltage_valid() &&
+         ups_data_.battery.is_valid() &&
+         !std::isnan(ups_data_.battery.level) &&
          ups_data_.battery.level < 100.0f;
 }
 
 bool UpsHidComponent::has_fault() const {
   std::lock_guard<std::mutex> lock(data_mutex_);
   // Check for various fault conditions based on available data
-  return ups_data_.power.is_input_out_of_range() || 
+  return ups_data_.power.is_input_out_of_range() ||
          (!ups_data_.power.is_valid() && !ups_data_.battery.is_valid());
 }
 

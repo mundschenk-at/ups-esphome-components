@@ -202,6 +202,8 @@ ProtocolFactory::create_by_name(const std::string& protocol_name, UpsHidComponen
             std::transform(info_name_lower.begin(), info_name_lower.end(), info_name_lower.begin(), ::tolower);
             std::transform(protocol_name_lower.begin(), protocol_name_lower.end(), protocol_name_lower.begin(), ::tolower);
 
+            ESP_LOGD("INFONAME %s, prot name %s", info_name_lower.c_str(), protocol_name_lower.c_str());
+
             if (info_name_lower.find(protocol_name_lower) != std::string::npos) {
                 ESP_LOGD(FACTORY_TAG, "Found matching protocol '%s' for name '%s'",
                          info.name.c_str(), protocol_name.c_str());
