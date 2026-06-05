@@ -100,9 +100,9 @@ class EatonProtocol : public UpsProtocolBase {
   void parse_test_result_report(const HidReport &report, UpsData &data);*/
 
   // Missing dynamic values from NUT analysis
-  //void read_missing_dynamic_values(UpsData &data);
+  void read_missing_dynamic_values(UpsData &data);
   void parse_battery_capacity_limits_report(const HidReport &report, UpsData &data);
-  //void parse_battery_chemistry_report(const HidReport &report, UpsData &data);
+  void parse_battery_chemistry_report(const HidReport &report, UpsData &data);
   void parse_manufacturing_date_report(const HidReport &report, UpsData &data);
 
   // String cleaning utilities

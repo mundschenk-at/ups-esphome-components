@@ -233,7 +233,7 @@ bool EatonProtocol::read_data(UpsData &data) {
     }
 
     // Read missing dynamic values identified from NUT analysis
-    //read_missing_dynamic_values(data);
+    read_missing_dynamic_values(data);
 
     ESP_LOGD(EATON_TAG, "Eaton data read completed successfully");
   } else {
@@ -839,7 +839,7 @@ void EatonProtocol::parse_serial_number_report(const HidReport &report, UpsData 
   ESP_LOGD(EATON_TAG, "Serial number: %s (string index: %d)",
            data.device.serial_number.c_str(), string_index);
 }
-*//*
+*/
 void EatonProtocol::read_missing_dynamic_values(UpsData &data) {
   ESP_LOGD(EATON_TAG, "Reading Eaton missing dynamic values from NUT analysis...");
 
@@ -850,8 +850,8 @@ void EatonProtocol::read_missing_dynamic_values(UpsData &data) {
   }
 
   // 2. Battery chemistry/type (shared report ID) - same as APC
-  /*HidReport battery_chemistry_report;
-  if (read_hid_report(battery_chemistry::REPORT_ID, battery_chemistry_report)) {
+  HidReport battery_chemistry_report;
+  if (read_hid_report(0x10, battery_chemistry_report)) {
     parse_battery_chemistry_report(battery_chemistry_report, data);
   }
 
@@ -861,14 +861,14 @@ void EatonProtocol::read_missing_dynamic_values(UpsData &data) {
 
   // 4. Try to read manufacturing date (based on NUT: UPS.PowerSummary.iOEMInformation)
   // Eaton manufacturing date might be in reports 0x04, 0x05, or similar to APC reports
-  std::vector<uint8_t> mfr_date_reports = {0x04, 0x05, 0x06, 0x19, 0x1c, 0x1d, 0x1e, 0x1f, 0x20};
+  /*std::vector<uint8_t> mfr_date_reports = {0x04, 0x05, 0x06, 0x19, 0x1c, 0x1d, 0x1e, 0x1f, 0x20};
   for (uint8_t report_id : mfr_date_reports) {
     HidReport mfr_date_report;
     if (read_hid_report(report_id, mfr_date_report)) {
       parse_manufacturing_date_report(mfr_date_report, data);
       break; // Found manufacturing date, stop trying other reports
     }
-  }
+  }*/
 
   // 5. Set static/derived values based on NUT behavior
   data.test.ups_test_result = test::RESULT_NO_TEST;  // Default test result
@@ -883,7 +883,7 @@ void EatonProtocol::read_missing_dynamic_values(UpsData &data) {
 
   ESP_LOGD(EATON_TAG, "Completed reading Eaton missing dynamic values");
 }
-*/
+
 
 void EatonProtocol::parse_battery_capacity_report(const HidReport &report, UpsData &data) {
   // This is the same as the capacity limits report - just a cleaner interface
@@ -926,7 +926,6 @@ void EatonProtocol::parse_battery_capacity_limits_report(const HidReport &report
   }*/
 }
 
-/*
 void EatonProtocol::parse_battery_chemistry_report(const HidReport &report, UpsData &data) {
   if (report.data.size() < 2) {
     ESP_LOGW(EATON_TAG, "Battery chemistry report too short: %zu bytes", report.data.size());
@@ -946,7 +945,7 @@ void EatonProtocol::parse_battery_chemistry_report(const HidReport &report, UpsD
   ESP_LOGI(EATON_TAG, "Eaton Battery chemistry: %s (raw: %d)",
            data.battery.type.c_str(), chemistry_raw);
 }
-*/
+
 std::string EatonProtocol::clean_firmware_string(const std::string &raw_firmware) {
   if (raw_firmware.empty()) {
     return raw_firmware;
