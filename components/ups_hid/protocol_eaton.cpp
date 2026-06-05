@@ -173,13 +173,13 @@ bool EatonProtocol::read_data(UpsData &data) {
   if (read_hid_report(OVERLOAD_REPORT_ID, overload_report)) {
     parse_overload_report(overload_report, data);
   }
-
-  // Read beeper status (Report 0x0c)
+*/
+  // Read beeper status (Report 0x1f)
   HidReport beeper_status_report;
   if (read_hid_report(BEEPER_STATUS_REPORT_ID, beeper_status_report)) {
     parse_beeper_status_report(beeper_status_report, data);
   }
-
+/*
   // Read device info (Reports 0x02, 0x1b) - these are string descriptors
   HidReport serial_number_report;
   if (read_hid_report(usb::REPORT_ID_SERIAL_NUMBER, serial_number_report)) {
@@ -979,7 +979,7 @@ std::string EatonProtocol::clean_firmware_string(const std::string &raw_firmware
 
   return cleaned;
 }
-/*
+
 bool EatonProtocol::beeper_enable() {
   ESP_LOGD(EATON_TAG, "Sending Eaton beeper enable command");
 
@@ -1088,7 +1088,7 @@ bool EatonProtocol::beeper_test() {
     return true; // Test succeeded even if restore failed
   }
 }
-
+/*
 // Test control methods implementation (based on NUT CPS-HID driver analysis)
 bool EatonProtocol::start_battery_test_quick() {
   ESP_LOGI(EATON_TAG, "Initiating quick battery test");

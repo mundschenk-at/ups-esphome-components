@@ -19,11 +19,12 @@ class EatonProtocol : public UpsProtocolBase {
   std::string get_protocol_name() const override { return "Eaton HID"; }
 
   // Beeper control methods
-  /*bool beeper_enable() override;
+  bool beeper_enable() override;
   bool beeper_disable() override;
   bool beeper_mute() override;
   bool beeper_test() override;
 
+  /*
   // UPS and battery test methods
   bool start_battery_test_quick() override;
   bool start_battery_test_deep() override;
@@ -44,12 +45,13 @@ class EatonProtocol : public UpsProtocolBase {
   static const uint8_t BATTERY_CAPACITY_REPORT_ID = 0x09;       // Battery capacity limits
   static const uint8_t BATTERY_RUNTIME_REPORT_ID = 0x06;        // Battery % + Runtime
   static const uint8_t PRESENT_STATUS_REPORT_ID = 0x01;         // Status bitmap
-  static const uint8_t BEEPER_STATUS_REPORT_ID = 0x1f;          // Beeper status
   static const uint8_t INPUT_TRANSFER_HIGH_REPORT_ID = 0x13;    // Input transfer limits
   static const uint8_t INPUT_TRANSFER_LOW_REPORT_ID = 0x14;     // Input transfer limits
   static const uint8_t OUTPUT_VOLTAGE_REPORT_ID = 0x0e;         // Output voltage
   static const uint8_t OUTPUT_VOLTAGE_NOMINAL_REPORT_ID = 0x12; // Output voltage nominal
   static const uint8_t LOAD_PERCENT_REPORT_ID = 0x07;           // Load percentage
+  static const uint8_t BEEPER_STATUS_REPORT_ID = 0x1f;          // Beeper status
+
   /*
   static const uint8_t DELAY_SHUTDOWN_REPORT_ID = 0x15;   // Delay before shutdown
   static const uint8_t DELAY_START_REPORT_ID = 0x16;      // Delay before startup
