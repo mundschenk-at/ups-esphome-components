@@ -926,18 +926,31 @@ void EatonProtocol::parse_battery_chemistry_report(const HidReport &report, UpsD
     return;
   }
 
-  // NUT debug: ReportID: 0x03, Value: 4 (iDeviceChemistry) - same as APC
-  uint8_t chemistry_raw = report.data[1];
+  // NUT debug: ReportID: 0x10, Value: 5 (iDeviceChemistry)
+  // This is a USB string descriptor index, not the actual serial number
+  uint8_t string_index = report.data[1];
 
-  // Map chemistry values based on NUT libhid implementation (same as APC)
-  data.battery.type = battery_chemistry::id_to_string(chemistry_raw);
+  ESP_LOGD(EATON_TAG, "Battery chemistry string descriptor index: %d", string_index);
 
-  if (data.battery.type == battery_chemistry::UNKNOWN) {
-    ESP_LOGW(EATON_TAG, "Unknown Eaton battery chemistry value: %d", chemistry_raw);
+  // Use real USB string descriptor reading - this will get the actual Eaton serial number
+  // NUT shows: Eaton real battery chemistry = "PbAc"
+  std::string actual_chemistry;
+  esp_err_t ret = parent_->usb_get_string_descriptor(string_index, actual_chemistry);
+
+  if (ret == ESP_OK && !actual_chemistry.empty()) {
+    data.battery.type = actual_chemistry;
+
+    // Normalize battery chemistry names
+    if ( data.battery.type == "PbAc" ) {
+      data.battery.type = battery_chemistry::LEAD_ACID;
+    }
+  } else {
+    data.battery.type == battery_chemistry::UNKNOWN;
+    ESP_LOGW(EATON_TAG, "Unknown Eaton battery chemistry value");
   }
 
-  ESP_LOGI(EATON_TAG, "Eaton Battery chemistry: %s (raw: %d)",
-           data.battery.type.c_str(), chemistry_raw);
+  ESP_LOGI(EATON_TAG, "Eaton Battery chemistry: %s (index: %d)",
+           data.battery.type.c_str(), string_index);
 }
 
 std::string EatonProtocol::clean_firmware_string(const std::string &raw_firmware) {
