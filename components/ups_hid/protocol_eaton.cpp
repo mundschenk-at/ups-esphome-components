@@ -77,7 +77,7 @@ bool EatonProtocol::read_data(UpsData &data) {
   bool success = false;
 
   // Core sensors (essential for operation)
-  // Read battery capacity limits (Report 0x07) - includes FullChargeCapacity for battery.status
+  // Read battery capacity limits (Report 0x08) - includes FullChargeCapacity for battery.status
   HidReport battery_capacity_report;
   if (read_hid_report(BATTERY_CAPACITY_REPORT_ID, battery_capacity_report)) {
     parse_battery_capacity_report(battery_capacity_report, data);
@@ -295,17 +295,16 @@ bool EatonProtocol::read_hid_report(uint8_t report_id, HidReport &report) {
 }
 
 void EatonProtocol::parse_battery_runtime_report(const HidReport &report, UpsData &data) {
-  if (report.data.size() < 4) {
+  if (report.data.size() < 5) {
     ESP_LOGW(EATON_TAG, "Battery runtime report too short: %zu bytes", report.data.size());
     return;
   }
 
   // NUT mapping:
   // Offset 0 (byte 1): RemainingCapacity (battery %) - Size: 8
-  // Offset 8 (bytes 2-3): RunTimeToEmpty - Size: 16, little-endian (IN SECONDS)
-  // Offset 24 (bytes 4-5): RemainingTimeLimit - Size: 16, little-endian
+  // Offset 8 (bytes 2-4): RunTimeToEmpty - Size: 32, little-endian (IN SECONDS)
   uint8_t battery_percentage = report.data[1];
-  uint16_t runtime_seconds = report.data[2] | (report.data[3] << 8);
+  uint16_t runtime_seconds = report.data[2] | (report.data[3] << 8 ) | (report.data[4] << 16 );
 
   // Clamp battery to 100% like NUT does
   data.battery.level = static_cast<float>(battery_percentage > battery::MAX_LEVEL_PERCENT ? battery::MAX_LEVEL_PERCENT : battery_percentage);
@@ -315,6 +314,7 @@ void EatonProtocol::parse_battery_runtime_report(const HidReport &report, UpsDat
   data.battery.runtime_minutes = static_cast<float>(runtime_seconds) / 60.0f;
 
   // Extract runtime low threshold if available (offset 24 = bytes 4-5)
+  // FIXME - some other report
   if (report.data.size() >= 6) {
     uint16_t runtime_low_seconds = report.data[4] | (report.data[5] << 8);
     data.battery.runtime_low = static_cast<float>(runtime_low_seconds) / 60.0f;  // Convert to minutes
@@ -843,13 +843,7 @@ void EatonProtocol::parse_serial_number_report(const HidReport &report, UpsData 
 void EatonProtocol::read_missing_dynamic_values(UpsData &data) {
   ESP_LOGD(EATON_TAG, "Reading Eaton missing dynamic values from NUT analysis...");
 
-  // 1. Battery capacity limits (Report 0x07) - contains multiple values
-  HidReport battery_capacity_limits_report;
-  if (read_hid_report(0x07, battery_capacity_limits_report)) {
-    parse_battery_capacity_limits_report(battery_capacity_limits_report, data);
-  }
-
-  // 2. Battery chemistry/type (shared report ID) - same as APC
+    // 2. Battery chemistry/type (shared report ID) - same as APC
   HidReport battery_chemistry_report;
   if (read_hid_report(0x10, battery_chemistry_report)) {
     parse_battery_chemistry_report(battery_chemistry_report, data);

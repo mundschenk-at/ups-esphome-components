@@ -42,7 +42,7 @@ class EatonProtocol : public UpsProtocolBase {
 */
  private:
   // Report ID constants (based on NUT debug logs)
-  static const uint8_t BATTERY_CAPACITY_REPORT_ID = 0x09;       // Battery capacity limits
+  static const uint8_t BATTERY_CAPACITY_REPORT_ID = 0x08;       // Battery capacity limits
   static const uint8_t BATTERY_RUNTIME_REPORT_ID = 0x06;        // Battery % + Runtime
   static const uint8_t PRESENT_STATUS_REPORT_ID = 0x01;         // Status bitmap
   static const uint8_t INPUT_TRANSFER_HIGH_REPORT_ID = 0x13;    // Input transfer limits
