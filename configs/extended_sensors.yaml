@@ -37,6 +37,16 @@ sensor:
 
   - platform: ups_hid
     ups_hid_id: ups_monitor
+    name: "Output Voltage Nominal"
+    id: output_voltage_nominal
+    type: output_voltage_nominal
+    unit_of_measurement: "V"
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 0
+
+  - platform: ups_hid
+    ups_hid_id: ups_monitor
     name: "Input Transfer Low"
     id: input_transfer_low
     type: input_transfer_low
@@ -127,12 +137,12 @@ sensor:
     lambda: |-
       if (!std::isnan(id(load_percentage).state)) {
         float ups_max_power = 700.0; // Default fallback
-        
+
         // Use HID nominal power if available
         if (!std::isnan(id(ups_realpower_nominal).state)) {
           ups_max_power = id(ups_realpower_nominal).state;
         }
-        
+
         return (ups_max_power * id(load_percentage).state) / 100.0;
       }
       return NAN;

@@ -69,6 +69,11 @@ SENSOR_TYPES = {
         "device_class": DEVICE_CLASS_VOLTAGE,
         "accuracy_decimals": 0,
     },
+    "output_voltage_nominal": {
+        "unit": UNIT_VOLT,
+        "device_class": DEVICE_CLASS_VOLTAGE,
+        "accuracy_decimals": 0,
+    },
     "input_transfer_low": {
         "unit": UNIT_VOLT,
         "device_class": DEVICE_CLASS_VOLTAGE,

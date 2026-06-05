@@ -302,6 +302,8 @@ void UpsHidComponent::update_sensors() {
       value = ups_data_.power.input_voltage_nominal;
     } else if (type == sensor_type::OUTPUT_VOLTAGE && !std::isnan(ups_data_.power.output_voltage)) {
       value = ups_data_.power.output_voltage;
+    } else if (type == sensor_type::OUTPUT_VOLTAGE_NOMINAL && !std::isnan(ups_data_.power.output_voltage_nominal)) {
+      value = ups_data_.power.output_voltage_nominal;
     } else if (type == sensor_type::LOAD_PERCENT && !std::isnan(ups_data_.power.load_percent)) {
       value = ups_data_.power.load_percent;
     } else if (type == sensor_type::FREQUENCY && !std::isnan(ups_data_.power.frequency)) {

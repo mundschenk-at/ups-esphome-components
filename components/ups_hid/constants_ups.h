@@ -181,6 +181,7 @@ namespace sensor_type {
     static constexpr const char* INPUT_VOLTAGE = "input_voltage";
     static constexpr const char* INPUT_VOLTAGE_NOMINAL = "input_voltage_nominal";
     static constexpr const char* OUTPUT_VOLTAGE = "output_voltage";
+    static constexpr const char* OUTPUT_VOLTAGE_NOMINAL = "output_voltage_nominal";
     static constexpr const char* LOAD_PERCENT = "load_percent";
     static constexpr const char* FREQUENCY = "frequency";
     static constexpr const char* INPUT_TRANSFER_LOW = "input_transfer_low";
