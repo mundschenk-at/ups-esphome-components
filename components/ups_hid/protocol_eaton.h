@@ -42,6 +42,7 @@ class EatonProtocol : public UpsProtocolBase {
 */
  private:
   // Report ID constants (based on NUT debug logs)
+  static const uint8_t DEVICE_INFORMATION_REPORT_ID = 0x10;     // General device information
   static const uint8_t BATTERY_CAPACITY_REPORT_ID = 0x08;       // Battery capacity limits
   static const uint8_t BATTERY_RUNTIME_REPORT_ID = 0x06;        // Battery % + Runtime
   static const uint8_t PRESENT_STATUS_REPORT_ID = 0x01;         // Status bitmap
@@ -57,11 +58,9 @@ class EatonProtocol : public UpsProtocolBase {
   static const uint8_t DELAY_START_REPORT_ID = 0x16;      // Delay before startup
   static const uint8_t OVERLOAD_REPORT_ID = 0x17;         // Overload status
   static const uint8_t REALPOWER_NOMINAL_REPORT_ID = 0x18; // Nominal real power
-  static const uint8_t INPUT_SENSITIVITY_REPORT_ID = 0x1a; // Input sensitivity
-  static const uint8_t FIRMWARE_VERSION_REPORT_ID = 0x1b;  // Firmware version
-  // Note: Serial number report ID moved to shared constant usb::REPORT_ID_SERIAL_NUMBER
+  static const uint8_t INPUT_SENSITIVITY_REPORT_ID = 0x1a; // Input sensitivity*/
   static const uint8_t TEST_RESULT_REPORT_ID = 0x14;       // UPS test result (same as test command)
-*/
+
   // HID Report structure
   struct HidReport {
     uint8_t report_id;
@@ -78,6 +77,7 @@ class EatonProtocol : public UpsProtocolBase {
   bool read_hid_report(uint8_t report_id, HidReport &report);
 
   // Parser methods for different reports
+  void parse_device_information_report(const HidReport &repor, UpsData &data);
   void parse_battery_capacity_report(const HidReport &report, UpsData &data);
   void parse_battery_runtime_report(const HidReport &report, UpsData &data);
   void parse_battery_voltage_report(const HidReport &report, UpsData &data);
@@ -94,19 +94,16 @@ class EatonProtocol : public UpsProtocolBase {
   void parse_delay_start_report(const HidReport &report, UpsData &data);
   void parse_realpower_nominal_report(const HidReport &report, UpsData &data);
   void parse_overload_report(const HidReport &report, UpsData &data);
-  void parse_input_sensitivity_report(const HidReport &report, UpsData &data);
-  void parse_firmware_version_report(const HidReport &report, UpsData &data);
-  void parse_serial_number_report(const HidReport &report, UpsData &data);
-  void parse_test_result_report(const HidReport &report, UpsData &data);*/
+  void parse_input_sensitivity_report(const HidReport &report, UpsData &data);*/
+/*  void parse_test_result_report(const HidReport &report, UpsData &data);*/
 
   // Missing dynamic values from NUT analysis
   void read_missing_dynamic_values(UpsData &data);
   void parse_battery_capacity_limits_report(const HidReport &report, UpsData &data);
-  void parse_battery_chemistry_report(const HidReport &report, UpsData &data);
   void parse_manufacturing_date_report(const HidReport &report, UpsData &data);
 
-  // String cleaning utilities
-  std::string clean_firmware_string(const std::string &raw_firmware);
+  // Retrieve device information strings
+  bool read_usb_descriptor(uint8_t index, std::string &string, const std::string &info);
 
   // Eaton-specific scaling logic
   void check_battery_voltage_scaling(float battery_voltage, float nominal_voltage);

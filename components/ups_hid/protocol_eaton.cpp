@@ -76,6 +76,13 @@ bool EatonProtocol::read_data(UpsData &data) {
 
   bool success = false;
 
+  // Read general device information
+  HidReport device_info_report;
+  if (read_hid_report(DEVICE_INFORMATION_REPORT_ID, device_info_report)) {
+    parse_device_information_report(device_info_report, data);
+    success = true;
+  }
+
   // Core sensors (essential for operation)
   // Read battery capacity limits (Report 0x08) - includes FullChargeCapacity for battery.status
   HidReport battery_capacity_report;
@@ -179,18 +186,8 @@ bool EatonProtocol::read_data(UpsData &data) {
   if (read_hid_report(BEEPER_STATUS_REPORT_ID, beeper_status_report)) {
     parse_beeper_status_report(beeper_status_report, data);
   }
+
 /*
-  // Read device info (Reports 0x02, 0x1b) - these are string descriptors
-  HidReport serial_number_report;
-  if (read_hid_report(usb::REPORT_ID_SERIAL_NUMBER, serial_number_report)) {
-    parse_serial_number_report(serial_number_report, data);
-  }
-
-  HidReport firmware_version_report;
-  if (read_hid_report(FIRMWARE_VERSION_REPORT_ID, firmware_version_report)) {
-    parse_firmware_version_report(firmware_version_report, data);
-  }
-
   // Read test result (Report 0x14) - same report ID used for test commands
   HidReport test_result_report;
   if (read_hid_report(TEST_RESULT_REPORT_ID, test_result_report)) {
@@ -201,40 +198,7 @@ bool EatonProtocol::read_data(UpsData &data) {
   // Try to read frequency from HID reports
   read_frequency_data(data);
 
-  // TIMING FIX: Only read USB string descriptors after successful HID communication
-  // This ensures the device is ready and responsive before attempting descriptor access
   if (success) {
-    ESP_LOGD(EATON_TAG, "Eaton HID data read successful, now reading device info...");
-
-    // Read manufacturer from USB Manufacturer string descriptor (index 1)
-    // NUT shows: UPS.PowerSummary.iManufacturer, Value: 1 → Manufacturer: "EATON"
-    std::string manufacturer_string;
-    esp_err_t mfr_ret = parent_->usb_get_string_descriptor(1, manufacturer_string);
-
-    if (mfr_ret == ESP_OK && !manufacturer_string.empty()) {
-      data.device.manufacturer = manufacturer_string;
-      ESP_LOGI(EATON_TAG, "Successfully read manufacturer from USB descriptor: \"%s\"", data.device.manufacturer.c_str());
-    } else {
-      data.device.manufacturer.clear();  // Set to unset state instead of hardcoded fallback
-      ESP_LOGW(EATON_TAG, "Failed to read USB Manufacturer descriptor: %s, leaving unset", esp_err_to_name(mfr_ret));
-    }
-
-    // Read model from USB Model string descriptor (index 2)
-    // NUT shows: Product: "Eaton 3S"
-    std::string product_string;
-    esp_err_t prod_ret = parent_->usb_get_string_descriptor(2, product_string);
-
-    if (prod_ret == ESP_OK && !product_string.empty()) {
-      data.device.model = product_string;
-      ESP_LOGI(EATON_TAG, "Successfully read Eaton model from USB Model descriptor: \"%s\"", data.device.model.c_str());
-    } else {
-      data.device.model.clear();  // Set to unset state instead of hardcoded fallback
-      ESP_LOGW(EATON_TAG, "Failed to read USB Model descriptor: %s, leaving model unset", esp_err_to_name(prod_ret));
-    }
-
-    // Read missing dynamic values identified from NUT analysis
-    read_missing_dynamic_values(data);
-
     ESP_LOGD(EATON_TAG, "Eaton data read completed successfully");
   } else {
     ESP_LOGW(EATON_TAG, "Failed to read any Eaton HID reports");
@@ -292,6 +256,81 @@ bool EatonProtocol::read_hid_report(uint8_t report_id, HidReport &report) {
   ESP_LOGD(EATON_TAG, "Input Report 0x%02X failed: %s", report_id, esp_err_to_name(ret));
   ESP_LOGV(EATON_TAG, "Failed to read report 0x%02X: %s", report_id, esp_err_to_name(ret));
   return false;
+}
+
+bool EatonProtocol::read_usb_descriptor(uint8_t index, std::string &string, const std::string &info) {
+    esp_err_t ret = parent_->usb_get_string_descriptor(index, string);
+
+    if (ret == ESP_OK && !string.empty()) {
+      ESP_LOGI(EATON_TAG, "Successfully read Eaton %s from USB descriptor: \"%s\"", info.c_str(), string.c_str());
+      return true;
+    }
+
+    string.clear();  // Set to unset state instead of hardcoded fallback
+    ESP_LOGW(EATON_TAG, "Failed to read USB descriptor: %s, leaving %s unset", esp_err_to_name(ret), info.c_str());
+    return false;
+}
+
+void EatonProtocol::parse_device_information_report(const HidReport &report, UpsData &data) {
+  if (report.data.size() < 8) {
+    ESP_LOGW(EATON_TAG, "Device information report too short: %zu bytes", report.data.size());
+    return;
+  }
+
+  // NUT debug: ReportID: 0x10, Offset: 0, Value: 5 (iDeviceChemistry)
+  // These are all USB string descriptor indices.
+  uint8_t device_chemistry_index = report.data[1];
+  uint8_t manufacturer_index = report.data[2];
+  uint8_t model_index = report.data[3];
+  uint8_t product_index = report.data[4];
+  uint8_t reference_number_index = report.data[5];
+  uint8_t serial_number_index = report.data[6];
+  uint8_t version_index = report.data[7];
+
+  // Use real USB string descriptor reading - this will get the battery chemistry
+  // NUT shows: UPS.PowerSummary.iDeviceChemistry = "PbAcid"
+  std::string device_chemistry;
+  if (read_usb_descriptor(device_chemistry_index, device_chemistry, "battery chemistry")) {
+    data.battery.type = device_chemistry;
+
+    // Normalize battery chemistry names
+    if ( data.battery.type == "PbAc" ) {
+      data.battery.type = battery_chemistry::LEAD_ACID;
+    }
+  } else {
+    data.battery.type = battery_chemistry::UNKNOWN;
+  }
+
+  // NUT shows: UPS.PowerSummary.iManufacturer, Value: 1 → "EATON"
+  std::string manufacturer;
+  read_usb_descriptor(manufacturer_index, manufacturer, "manufacturer");
+  data.device.manufacturer = manufacturer;
+
+  // NUT shows: UPS.PowerSummary.iModel, Value: 2 → "XXXX"
+  std::string model;
+  read_usb_descriptor(model_index, model, "model");
+
+  // NUT shows: UPS.PowerSummary.iProduct, Value: 3 → "Eaton 3S"
+  std::string product;
+  read_usb_descriptor(product_index, product, "product");
+
+  // The actual model needs iModel and iProduct für Eaton devices
+  data.device.model = product + " " + model;
+
+  // NUT shows: UPS.PowerSummary.iReferenceNumber, Value: 7 → "XXXX"
+  std::string reference_number;
+  read_usb_descriptor(reference_number_index, reference_number, "reference number");
+  // Read just for debugging
+
+  // NUT shows: UPS.PowerSummary.iSerialNumber, Value: 4 → "XXXX"
+  std::string serial_number;
+  read_usb_descriptor(serial_number_index, serial_number, "serial number");
+  data.device.serial_number = serial_number;
+
+  // NUT shows: UPS.PowerSummary.iVersion, Value: 6 → "XXXX"
+  std::string version;
+  read_usb_descriptor(version_index, version, "version");
+  data.device.firmware_version = version;
 }
 
 void EatonProtocol::parse_battery_runtime_report(const HidReport &report, UpsData &data) {
@@ -684,103 +723,10 @@ void EatonProtocol::parse_input_sensitivity_report(const HidReport &report, UpsD
       break;
   }
 }
+*/
 
-void EatonProtocol::parse_firmware_version_report(const HidReport &report, UpsData &data) {
-  if (report.data.size() < 2) {
-    ESP_LOGW(EATON_TAG, "Firmware version report too short: %zu bytes", report.data.size());
-    return;
-  }
 
-  // DYNAMIC FIRMWARE VERSION: Primary method - USB string descriptor
-  // NUT debug shows: Report 0x1b, Value: 5 (CPSFirmwareVersion - string descriptor index)
-  uint8_t string_index = report.data[1];
-
-  // Validate string index is reasonable (Eaton typically uses indices 1-10)
-  if (string_index > 0 && string_index <= 15) {
-    ESP_LOGD(EATON_TAG, "Reading Eaton firmware from USB string descriptor index: %d", string_index);
-
-    std::string actual_firmware;
-    esp_err_t fw_ret = parent_->usb_get_string_descriptor(string_index, actual_firmware);
-
-    if (fw_ret == ESP_OK && !actual_firmware.empty()) {
-      // Clean up firmware string - remove invalid characters and trim
-      std::string cleaned_firmware = clean_firmware_string(actual_firmware);
-      data.device.firmware_version = cleaned_firmware;
-      ESP_LOGI(EATON_TAG, "Successfully read Eaton firmware from USB string descriptor %d: \"%s\"",
-               string_index, data.device.firmware_version.c_str());
-      if (cleaned_firmware != actual_firmware) {
-        ESP_LOGD(EATON_TAG, "Cleaned firmware string from \"%s\" to \"%s\"",
-                 actual_firmware.c_str(), cleaned_firmware.c_str());
-      }
-      return;
-    } else {
-      ESP_LOGW(EATON_TAG, "Failed to read USB string descriptor %d for firmware: %s, trying fallbacks",
-               string_index, esp_err_to_name(fw_ret));
-    }
-  } else {
-    ESP_LOGD(EATON_TAG, "Invalid string index %d for firmware, trying direct HID parsing", string_index);
-  }
-
-  // FALLBACK 1: Try to parse firmware from raw HID report data
-  // Some Eaton models might store firmware directly in HID reports
-  std::string firmware_from_hid;
-  for (size_t i = 1; i < report.data.size() && report.data[i] != 0; i++) {
-    if (report.data[i] >= 32 && report.data[i] <= 126) { // Printable ASCII
-      firmware_from_hid += static_cast<char>(report.data[i]);
-    }
-  }
-
-  if (!firmware_from_hid.empty() && firmware_from_hid.length() >= 3) {
-    data.device.firmware_version = firmware_from_hid;
-    ESP_LOGI(EATON_TAG, "Firmware version from HID report data: %s", data.device.firmware_version.c_str());
-    return;
-  }
-
-  // FALLBACK 2: Try other common Eaton string descriptor indices
-  // Some models may use different indices for firmware
-  const uint8_t common_fw_indices[] = {4, 5, 6}; // Common firmware string indices
-  for (uint8_t idx : common_fw_indices) {
-    if (idx == string_index) continue; // Already tried this one
-
-    ESP_LOGD(EATON_TAG, "Trying alternative firmware string descriptor index: %d", idx);
-    std::string fw_attempt;
-    esp_err_t ret = parent_->usb_get_string_descriptor(idx, fw_attempt);
-
-    if (ret == ESP_OK && !fw_attempt.empty()) {
-      std::string cleaned_fw = clean_firmware_string(fw_attempt);
-      if ((cleaned_fw.find("CR") == 0 || cleaned_fw.find("CP") == 0 ||
-           cleaned_fw.find("FW") != std::string::npos)) {
-        // Looks like a valid Eaton firmware string
-        data.device.firmware_version = cleaned_fw;
-        ESP_LOGI(EATON_TAG, "Found Eaton firmware at alternative string descriptor %d: \"%s\"",
-                 idx, data.device.firmware_version.c_str());
-        if (cleaned_fw != fw_attempt) {
-          ESP_LOGD(EATON_TAG, "Cleaned alternative firmware string from \"%s\" to \"%s\"",
-                   fw_attempt.c_str(), cleaned_fw.c_str());
-        }
-        return;
-      }
-    }
-  }
-
-  // FALLBACK 3: Generate version from binary data as last resort
-  if (report.data.size() >= 3) {
-    char firmware_fallback[32];
-    snprintf(firmware_fallback, sizeof(firmware_fallback), "CP-%02X.%02X.%02X",
-             report.data[1], report.data[2],
-             (report.data.size() > 3) ? report.data[3] : 0);
-    data.device.firmware_version = firmware_fallback;
-    ESP_LOGD(EATON_TAG, "Using binary firmware version fallback: %s", data.device.firmware_version.c_str());
-  } else {
-    // No firmware version could be determined
-    data.device.firmware_version.clear();
-    ESP_LOGW(EATON_TAG, "Unable to determine Eaton firmware version from any source");
-  }
-
-  ESP_LOGD(EATON_TAG, "Final firmware version: %s (original string index: %d)",
-           data.device.firmware_version.c_str(), string_index);
-}
-
+/*
 void EatonProtocol::parse_overload_report(const HidReport &report, UpsData &data) {
   if (report.data.size() < 2) {
     ESP_LOGW(EATON_TAG, "Overload report too short: %zu bytes", report.data.size());
@@ -843,11 +789,7 @@ void EatonProtocol::parse_serial_number_report(const HidReport &report, UpsData 
 void EatonProtocol::read_missing_dynamic_values(UpsData &data) {
   ESP_LOGD(EATON_TAG, "Reading Eaton missing dynamic values from NUT analysis...");
 
-    // 2. Battery chemistry/type (shared report ID) - same as APC
-  HidReport battery_chemistry_report;
-  if (read_hid_report(0x10, battery_chemistry_report)) {
-    parse_battery_chemistry_report(battery_chemistry_report, data);
-  }
+
 
   // 3. Battery runtime low threshold is already available in existing Report 0x08
   // It's at offset 24 and already parsed in parse_battery_runtime_report
@@ -918,72 +860,6 @@ void EatonProtocol::parse_battery_capacity_limits_report(const HidReport &report
     ESP_LOGD(EATON_TAG, "Eaton FullChargeCapacity: %d%% (always 100%% for healthy battery)", full_charge_capacity);
     // Note: battery_status is now set from charging state in parse_present_status_report
   }*/
-}
-
-void EatonProtocol::parse_battery_chemistry_report(const HidReport &report, UpsData &data) {
-  if (report.data.size() < 2) {
-    ESP_LOGW(EATON_TAG, "Battery chemistry report too short: %zu bytes", report.data.size());
-    return;
-  }
-
-  // NUT debug: ReportID: 0x10, Value: 5 (iDeviceChemistry)
-  // This is a USB string descriptor index, not the actual serial number
-  uint8_t string_index = report.data[1];
-
-  ESP_LOGD(EATON_TAG, "Battery chemistry string descriptor index: %d", string_index);
-
-  // Use real USB string descriptor reading - this will get the actual Eaton serial number
-  // NUT shows: Eaton real battery chemistry = "PbAc"
-  std::string actual_chemistry;
-  esp_err_t ret = parent_->usb_get_string_descriptor(string_index, actual_chemistry);
-
-  if (ret == ESP_OK && !actual_chemistry.empty()) {
-    data.battery.type = actual_chemistry;
-
-    // Normalize battery chemistry names
-    if ( data.battery.type == "PbAc" ) {
-      data.battery.type = battery_chemistry::LEAD_ACID;
-    }
-  } else {
-    data.battery.type == battery_chemistry::UNKNOWN;
-    ESP_LOGW(EATON_TAG, "Unknown Eaton battery chemistry value");
-  }
-
-  ESP_LOGI(EATON_TAG, "Eaton Battery chemistry: %s (index: %d)",
-           data.battery.type.c_str(), string_index);
-}
-
-std::string EatonProtocol::clean_firmware_string(const std::string &raw_firmware) {
-  if (raw_firmware.empty()) {
-    return raw_firmware;
-  }
-
-  std::string cleaned = raw_firmware;
-
-  // Remove non-printable characters and common USB string descriptor artifacts
-  cleaned.erase(std::remove_if(cleaned.begin(), cleaned.end(), [](unsigned char c) {
-    // Keep alphanumeric, dots, dashes, and spaces
-    return !(std::isalnum(c) || c == '.' || c == '-' || c == ' ');
-  }), cleaned.end());
-
-  // Trim trailing and leading whitespace
-  // Trim leading whitespace
-  cleaned.erase(cleaned.begin(), std::find_if(cleaned.begin(), cleaned.end(), [](unsigned char ch) {
-    return !std::isspace(ch);
-  }));
-
-  // Trim trailing whitespace
-  cleaned.erase(std::find_if(cleaned.rbegin(), cleaned.rend(), [](unsigned char ch) {
-    return !std::isspace(ch);
-  }).base(), cleaned.end());
-
-  // If the string is now empty, return the original
-  if (cleaned.empty()) {
-    ESP_LOGW(EATON_TAG, "Firmware string cleaning resulted in empty string, keeping original");
-    return raw_firmware;
-  }
-
-  return cleaned;
 }
 
 bool EatonProtocol::beeper_enable() {
@@ -1294,16 +1170,6 @@ if (report.data.size() >= 4) {
   return NAN;
 }
 
-}  // namespace ups_hid
-}  // namespace esphome
-
-// Protocol Factory Self-Registration
-#include "protocol_factory.h"
-
-namespace esphome {
-namespace ups_hid {
-
-// Creator function for Eaton protocol
 void EatonProtocol::parse_manufacturing_date_report(const HidReport &report, UpsData &data) {
   if (report.data.size() < 4) {
     ESP_LOGD(EATON_TAG, "Manufacturing date report 0x%02X too short: %zu bytes", report.report_id, report.data.size());
@@ -1498,6 +1364,17 @@ bool EatonProtocol::set_reboot_delay(int seconds) {
   }
 }*/
 
+
+}  // namespace ups_hid
+}  // namespace esphome
+
+// Protocol Factory Self-Registration
+#include "protocol_factory.h"
+
+namespace esphome {
+namespace ups_hid {
+
+// Creator function for Eaton protocol
 std::unique_ptr<UpsProtocolBase> create_eaton_protocol(UpsHidComponent* parent) {
     return std::make_unique<EatonProtocol>(parent);
 }
