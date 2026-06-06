@@ -43,6 +43,8 @@ class EatonProtocol : public UpsProtocolBase {
  private:
   // Report ID constants (based on NUT debug logs)
   static const uint8_t DEVICE_INFORMATION_REPORT_ID = 0x10;     // General device information
+  static const uint8_t BATTERY_SYSTEM__REPORT_ID = 0x07;        // Load percentage etc.
+
   static const uint8_t BATTERY_CAPACITY_REPORT_ID = 0x08;       // Battery capacity limits
   static const uint8_t BATTERY_RUNTIME_REPORT_ID = 0x06;        // Battery % + Runtime
   static const uint8_t PRESENT_STATUS_REPORT_ID = 0x01;         // Status bitmap
@@ -50,7 +52,6 @@ class EatonProtocol : public UpsProtocolBase {
   static const uint8_t INPUT_TRANSFER_LOW_REPORT_ID = 0x14;     // Input transfer limits
   static const uint8_t OUTPUT_VOLTAGE_REPORT_ID = 0x0e;         // Output voltage
   static const uint8_t OUTPUT_VOLTAGE_NOMINAL_REPORT_ID = 0x12; // Output voltage nominal
-  static const uint8_t LOAD_PERCENT_REPORT_ID = 0x07;           // Load percentage
   static const uint8_t BEEPER_STATUS_REPORT_ID = 0x1f;          // Beeper status
 
   /*
@@ -78,6 +79,8 @@ class EatonProtocol : public UpsProtocolBase {
 
   // Parser methods for different reports
   void parse_device_information_report(const HidReport &repor, UpsData &data);
+  void parse_battery_system_report(const HidReport &repor, UpsData &data);
+
   void parse_battery_capacity_report(const HidReport &report, UpsData &data);
   void parse_battery_runtime_report(const HidReport &report, UpsData &data);
   void parse_battery_voltage_report(const HidReport &report, UpsData &data);
@@ -89,7 +92,8 @@ class EatonProtocol : public UpsProtocolBase {
   void parse_input_transfer_high_report(const HidReport &report, UpsData &data);
   void parse_input_transfer_low_report(const HidReport &report, UpsData &data);
   /*void parse_output_voltage_report(const HidReport &report, UpsData &data);*/
-  void parse_load_percent_report(const HidReport &report, UpsData &data);/*
+ // void parse_load_percent_report(const HidReport &report, UpsData &data);
+ /*
   void parse_delay_shutdown_report(const HidReport &report, UpsData &data);
   void parse_delay_start_report(const HidReport &report, UpsData &data);
   void parse_realpower_nominal_report(const HidReport &report, UpsData &data);

@@ -118,10 +118,10 @@ bool EatonProtocol::read_data(UpsData &data) {
     parse_output_voltage_nominal_report(output_voltage_nominal_report, data);
   }
 
-  // Read load percentage (Report 0x13)
-  HidReport load_report;
-  if (read_hid_report(LOAD_PERCENT_REPORT_ID, load_report)) {
-    parse_load_percent_report(load_report, data);
+  // Read load percentage (Report 0x07)
+  HidReport battery_system_report;
+  if (read_hid_report(BATTERY_SYSTEM__REPORT_ID, battery_system_report)) {
+    parse_battery_system_report(battery_system_report, data);
     success = true;
   }
 /*
@@ -476,11 +476,27 @@ void EatonProtocol::parse_output_voltage_report(const HidReport &report, UpsData
            data.power.output_voltage, report.data[2], report.data[1], voltage_raw);
 }
 */
-void EatonProtocol::parse_load_percent_report(const HidReport &report, UpsData &data) {
-  if (report.data.size() < 7) {
+void EatonProtocol::parse_battery_system_report(const HidReport &report, UpsData &data) {
+  if (report.data.size() < 8) {
     ESP_LOGW(EATON_TAG, "Load percentage report too short: %zu bytes", report.data.size());
     return;
   }
+
+  // Path: UPS.BatterySystem.Charger.Status, Type: Feature, ReportID: 0x07, Offset: 0, Size: 8
+  // Path: UPS.OutletSystem.Outlet.[1].Status, Type: Feature, ReportID: 0x07, Offset: 8, Size: 8
+  // Path: UPS.OutletSystem.Outlet.[2].Status, Type: Feature, ReportID: 0x07, Offset: 16, Size: 8
+  // Path: UPS.PowerSummary.OverallAlarm.Code, Type: Feature, ReportID: 0x07, Offset: 24, Size: 8
+  // Path: UPS.PowerSummary.Mode, Type: Feature, ReportID: 0x07, Offset: 32, Size: 8
+  // Path: UPS.PowerSummary.PercentLoad, Type: Feature, ReportID: 0x07, Offset: 40, Size: 8
+  // Path: UPS.PowerSummary.Status, Type: Feature, ReportID: 0x07, Offset: 48, Size: 8
+
+  ESP_LOGD(EATON_TAG, "UPS.BatterySystem.Charger.Status: 0x%02X", report.data[1]);
+  ESP_LOGD(EATON_TAG, "UPS.OutletSystem.Outlet.[1].Status: 0x%02X", report.data[2]);
+  ESP_LOGD(EATON_TAG, "UPS.OutletSystem.Outlet.[2].Status: 0x%02X", report.data[3]);
+  ESP_LOGD(EATON_TAG, "UPS.PowerSummary.OverallAlarm.Code: 0x%02X", report.data[4]);
+  ESP_LOGD(EATON_TAG, "UPS.PowerSummary.Mode: 0x%02X", report.data[5]);
+  ESP_LOGD(EATON_TAG, "PowerSummary.PercentLoad: 0x%02X", report.data[6]);
+  ESP_LOGD(EATON_TAG, "UPS.PowerSummary.Status: 0x%02X", report.data[7]);
 
   // NUT debug: Report 0x07, Value: 6 (our raw: 0x07 = 7%)
   // Data format: [ID, load%] - single byte
