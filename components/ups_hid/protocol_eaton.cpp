@@ -339,6 +339,9 @@ void EatonProtocol::parse_battery_runtime_report(const HidReport &report, UpsDat
     return;
   }
 
+  // Path: UPS.PowerSummary.RemainingCapacity, Type: Feature, ReportID: 0x06, Offset: 0, Size: 8
+  // Path: UPS.PowerSummary.RunTimeToEmpty, Type: Feature, ReportID: 0x06, Offset: 8, Size: 32
+
   // NUT mapping:
   // Offset 0 (byte 1): RemainingCapacity (battery %) - Size: 8
   // Offset 8 (bytes 2-4): RunTimeToEmpty - Size: 32, little-endian (IN SECONDS)
@@ -371,6 +374,8 @@ void EatonProtocol::parse_battery_voltage_report(const HidReport &report, UpsDat
     return;
   }
 
+  // Path: UPS.Flow.[4].ConfigVoltage, Type: Feature, ReportID: 0x12, Offset: 0, Size: 8,
+
   // NUT debug shows: Report 0x0a, Offset 0, Size 8, Value: 24
   // Current raw value: 0xF0 (240) should become 24V
   // So scaling factor is 24/240 = 0.1 (divide by 10)
@@ -389,6 +394,16 @@ void EatonProtocol::parse_present_status_report(const HidReport &report, UpsData
 
   // Based on NUT debug logs - bit flags in first byte
   uint8_t status_byte = report.data[1];
+
+  // Path: UPS.PowerSummary.PresentStatus.ACPresent, Type: Feature, ReportID: 0x01, Offset: 0, Size: 1
+  // Path: UPS.PowerSummary.PresentStatus.BelowRemainingCapacityLimit, Type: Feature, ReportID: 0x01, Offset: 1, Size: 1,
+  // Path: UPS.PowerSummary.PresentStatus.Charging, Type: Feature, ReportID: 0x01, Offset: 2, Size: 1
+  // Path: UPS.PowerSummary.PresentStatus.CommunicationLost, Type: Feature, ReportID: 0x01, Offset: 3
+  // Path: UPS.PowerSummary.PresentStatus.Discharging, Type: Feature, ReportID: 0x01, Offset: 4, Size: 1
+  // Path: UPS.PowerSummary.PresentStatus.Good, Type: Feature, ReportID: 0x01, Offset: 5, Size: 1
+  // Path: UPS.PowerSummary.PresentStatus.InternalFailure, Type: Feature, ReportID: 0x01, Offset: 6, Size: 1
+  // Path: UPS.PowerSummary.PresentStatus.NeedReplacement, Type: Feature, ReportID: 0x01, Offset: 7, Size: 1
+  // Path: UPS.PowerSummary.PresentStatus.Overload, Type: Feature, ReportID: 0x01, Offset: 8, Size: 8
 
   // Parse status bits (based on HID paths from debug)
   bool ac_present = (status_byte & 0x01) != 0;           // Offset 0
@@ -534,6 +549,8 @@ void EatonProtocol::parse_battery_voltage_nominal_report(const HidReport &report
     return;
   }
 
+  ESP_LOGD(EATON_TAG, "Battery voltage nominal size: %zu", report.data.size());
+
   // NUT debug shows: Report 0x09, Value: 24 (ConfigVoltage)
   // Some Eaton models report in decivolts (240 = 24.0V)
   uint8_t voltage_raw = report.data[1];
@@ -549,6 +566,7 @@ void EatonProtocol::parse_beeper_status_report(const HidReport &report, UpsData 
     return;
   }
 
+  // Path: UPS.PowerSummary.AudibleAlarmControl, Type: Feature, ReportID: 0x1f, Offset: 0, Size: 8
   // NUT debug shows: Report 0x0c, Value: 2 (AudibleAlarmControl)
   uint8_t beeper_raw = report.data[1];
 
@@ -578,6 +596,10 @@ void EatonProtocol::parse_output_voltage_nominal_report(const HidReport &report,
     return;
   }
 
+  ESP_LOGD(EATON_TAG, "Output voltage nominal size: %zu", report.data.size());
+
+  // Path: UPS.Flow.[4].ConfigVoltage, Type: Feature, ReportID: 0x12, Offset: 0, Size: 8
+
   // NUT debug shows: Report 0x0e, Value: 230 (ConfigVoltage)
   uint8_t voltage_raw = report.data[1];
   data.power.output_voltage_nominal = static_cast<float>(voltage_raw);
@@ -593,6 +615,7 @@ void EatonProtocol::parse_input_transfer_high_report(const HidReport &report, Up
   }
 
   // NUT debug shows: Report 0x13
+  // Path: UPS.PowerConverter.Output.HighVoltageTransfer, Type: Feature, ReportID: 0x13, Offset: 0, Size: 16
   // Offset 0, Size 16: HighVoltageTransfer = 260
   uint16_t high_transfer = report.data[1] | (report.data[2] << 8);
 
@@ -610,6 +633,7 @@ void EatonProtocol::parse_input_transfer_low_report(const HidReport &report, Ups
   }
 
   // NUT debug shows: Report 0x14
+  // Path: UPS.PowerConverter.Output.LowVoltageTransfer, Type: Feature, ReportID: 0x14, Offset: 0, Size: 8
   // Offset 0, Size 8: LowVoltageTransfer = 170
   uint16_t low_transfer = report.data[1];
 
@@ -625,6 +649,9 @@ void EatonProtocol::parse_delay_shutdown_report(const HidReport &report, UpsData
     ESP_LOGW(EATON_TAG, "Delay shutdown report too short: %zu bytes", report.data.size());
     return;
   }
+
+  // Path: UPS.PowerSummary.DelayBeforeShutdown, Type: Feature, ReportID: 0x09, Offset: 0, Size: 32
+  // Path: UPS.PowerSummary.DelayBeforeStartup, Type: Feature, ReportID: 0x0a, Offset: 0, Size: 32
 
   // NUT debug shows: Report 0x15, Value: -60 (DelayBeforeShutdown)
   // Handle 0xFFFF as "disabled" (not -1)
@@ -847,6 +874,8 @@ void EatonProtocol::parse_battery_capacity_limits_report(const HidReport &report
     ESP_LOGW(EATON_TAG, "Battery capacity limits report too short: %zu bytes", report.data.size());
     return;
   }
+
+  // Path: UPS.PowerSummary.RemainingCapacityLimit, Type: Feature, ReportID: 0x08, Offset: 0, Size: 8
 
   // NUT debug shows Report 0x07 contains multiple capacity values at different offsets:
   // Offset 24: WarningCapacityLimit = 20
