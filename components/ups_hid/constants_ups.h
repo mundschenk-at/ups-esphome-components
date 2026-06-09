@@ -58,6 +58,8 @@ namespace voltage {
 namespace defaults {
     static constexpr int CYBERPOWER_SHUTDOWN_DELAY_SEC = 60;
     static constexpr int CYBERPOWER_STARTUP_DELAY_SEC = 120;
+    static constexpr int EATON_SHUTDOWN_DELAY_SEC = 20;
+    static constexpr int EATON_STARTUP_DELAY_SEC = 30;
     static constexpr int REBOOT_TIMER_DEFAULT = -10;
     static constexpr uint16_t AUTO_DETECT_VENDOR_ID = 0;
     static constexpr uint16_t AUTO_DETECT_PRODUCT_ID = 0;

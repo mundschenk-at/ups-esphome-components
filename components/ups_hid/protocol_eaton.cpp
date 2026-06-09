@@ -91,21 +91,28 @@ bool EatonProtocol::read_data(UpsData &data) {
     success = true;
   }
 
-  // Read battery level and runtime (Report 0x08)
+  // Read battery level and runtime (Report 0x06)
   HidReport battery_runtime_report;
   if (read_hid_report(BATTERY_RUNTIME_REPORT_ID, battery_runtime_report)) {
     parse_battery_runtime_report(battery_runtime_report, data);
     success = true;
   }
 
-  // Read status flags (Report 0x0b)
+  // Read status flags (Report 0x01)
   HidReport status_report;
   if (read_hid_report(PRESENT_STATUS_REPORT_ID, status_report)) {
     parse_present_status_report(status_report, data);
     success = true;
   }
 
-  // Read input voltage (Report 0x0f)
+  // Read input voltage status report (Report 0x03)
+  HidReport voltage_status_report;
+  if (read_hid_report(VOLTAGE_STATUS_REPORT_ID, voltage_status_report)) {
+    parse_voltage_status_report(voltage_status_report, data);
+    success = true;
+  }
+
+  // Read output voltage (Report 0x0e)
   HidReport output_voltage_report;
   if (read_hid_report(OUTPUT_VOLTAGE_REPORT_ID, output_voltage_report)) {
     parse_output_voltage_report(output_voltage_report, data);
@@ -113,14 +120,14 @@ bool EatonProtocol::read_data(UpsData &data) {
   }
 
   // Read output voltage nominal (Report 0x12)
-  HidReport output_voltage_nominal_report;
-  if (read_hid_report(OUTPUT_VOLTAGE_NOMINAL_REPORT_ID, output_voltage_nominal_report)) {
-    parse_output_voltage_nominal_report(output_voltage_nominal_report, data);
+  HidReport config_voltage_report;
+  if (read_hid_report(CONFIG_VOLTAGE_REPORT_ID, config_voltage_report)) {
+    parse_config_voltage_report(config_voltage_report, data);
   }
 
   // Read load percentage (Report 0x07)
   HidReport battery_system_report;
-  if (read_hid_report(BATTERY_SYSTEM__REPORT_ID, battery_system_report)) {
+  if (read_hid_report(BATTERY_SYSTEM_REPORT_ID, battery_system_report)) {
     parse_battery_system_report(battery_system_report, data);
     success = true;
   }
@@ -151,8 +158,8 @@ bool EatonProtocol::read_data(UpsData &data) {
     parse_input_transfer_low_report(input_transfer_low_report, data);
   }
 
-  /*
-  // Read delay settings (Reports 0x15, 0x16)
+
+  // Read delay settings (Reports 0x09, 0x0a)
   HidReport delay_shutdown_report;
   if (read_hid_report(DELAY_SHUTDOWN_REPORT_ID, delay_shutdown_report)) {
     parse_delay_shutdown_report(delay_shutdown_report, data);
@@ -161,7 +168,7 @@ bool EatonProtocol::read_data(UpsData &data) {
   HidReport delay_start_report;
   if (read_hid_report(DELAY_START_REPORT_ID, delay_start_report)) {
     parse_delay_start_report(delay_start_report, data);
-  }*/
+  }
 
   // Read nominal power (Report 0x18)
   /*HidReport realpower_nominal_report;
@@ -187,13 +194,6 @@ bool EatonProtocol::read_data(UpsData &data) {
     parse_beeper_status_report(beeper_status_report, data);
   }
 
-/*
-  // Read test result (Report 0x14) - same report ID used for test commands
-  HidReport test_result_report;
-  if (read_hid_report(TEST_RESULT_REPORT_ID, test_result_report)) {
-    parse_test_result_report(test_result_report, data);
-  }
-*/
   // Set frequency to NaN - not available for Eaton CP1500 model
   // Try to read frequency from HID reports
   read_frequency_data(data);
@@ -368,24 +368,6 @@ void EatonProtocol::parse_battery_runtime_report(const HidReport &report, UpsDat
   }
 }
 
-void EatonProtocol::parse_battery_voltage_report(const HidReport &report, UpsData &data) {
-  if (report.data.size() < 2) {
-    ESP_LOGW(EATON_TAG, "Battery voltage report too short: %zu bytes", report.data.size());
-    return;
-  }
-
-  // Path: UPS.Flow.[4].ConfigVoltage, Type: Feature, ReportID: 0x12, Offset: 0, Size: 8,
-
-  // NUT debug shows: Report 0x0a, Offset 0, Size 8, Value: 24
-  // Current raw value: 0xF0 (240) should become 24V
-  // So scaling factor is 24/240 = 0.1 (divide by 10)
-  uint8_t voltage_raw = report.data[1];
-  data.battery.voltage = static_cast<float>(voltage_raw) / battery::VOLTAGE_SCALE_FACTOR; // Scale by 0.1
-
-  ESP_LOGD(EATON_TAG, "Battery voltage: %.1fV (raw: 0x%02X = %d)",
-           data.battery.voltage, voltage_raw, voltage_raw);
-}
-
 void EatonProtocol::parse_present_status_report(const HidReport &report, UpsData &data) {
   if (report.data.size() < 3) {
     ESP_LOGW(EATON_TAG, "Present status report too short: %zu bytes", report.data.size());
@@ -459,12 +441,36 @@ void EatonProtocol::parse_present_status_report(const HidReport &report, UpsData
            data.battery.status.c_str());
 }
 
+void EatonProtocol::parse_voltage_status_report(const HidReport &report, UpsData &data) {
+  if (report.data.size() < 3) {
+    ESP_LOGW(EATON_TAG, "Voltage status report too short: %zu bytes", report.data.size());
+    return;
+  }
+
+  // Path: UPS.BatterySystem.Charger.PresentStatus.VoltageTooHigh, Type: Feature, ReportID: 0x03, Offset: 0, Size: 8
+  // Path: UPS.BatterySystem.Charger.PresentStatus.VoltageTooLow, Type: Feature, ReportID: 0x03, Offset: 8, Size: 8
+  uint8_t voltage_too_high   = report.data[1];
+  uint8_t voltage_too_low    = report.data[2];
+  std::string voltage_status = {};
+
+  if (voltage_too_high == 0x00 && voltage_too_low == 0x00) {
+    voltage_status = "good";
+  } else if (voltage_too_high > 0) {
+    voltage_status = "critical-high";
+  } else {
+    voltage_status = "critical-low";
+  }
+
+  ESP_LOGD(EATON_TAG, "Input voltage status: %s (raw status high: %zu, raw status low: %zu", voltage_status.c_str(), voltage_too_high, voltage_too_low);
+}
+
 void EatonProtocol::parse_output_voltage_report(const HidReport &report, UpsData &data) {
   if (report.data.size() < 3) {
     ESP_LOGW(EATON_TAG, "Input voltage report too short: %zu bytes", report.data.size());
     return;
   }
 
+  // Path: UPS.PowerConverter.Output.Voltage, Type: Feature, ReportID: 0x0e, Offset: 0, Size: 16
   // NUT debug: Report 0x0e, Value: 231 (matches our 0x00E6 = 230)
   // Data format: [ID, volt_low, volt_high] - 16-bit little endian
   uint16_t voltage_raw = report.data[1] | (report.data[2] << 8);
@@ -474,23 +480,7 @@ void EatonProtocol::parse_output_voltage_report(const HidReport &report, UpsData
   ESP_LOGD(EATON_TAG, "Output voltage: %.1fV (raw: 0x%02X%02X = %d)",
            data.power.output_voltage, report.data[2], report.data[1], voltage_raw);
 }
-/*
-void EatonProtocol::parse_output_voltage_report(const HidReport &report, UpsData &data) {
-  if (report.data.size() < 3) {
-    ESP_LOGW(EATON_TAG, "Output voltage report too short: %zu bytes", report.data.size());
-    return;
-  }
 
-  // NUT debug: Report 0x12, Value: 231 (matches our 0x00E6 = 230)
-  // Data format: [ID, volt_low, volt_high] - 16-bit little endian
-  uint16_t voltage_raw = report.data[1] | (report.data[2] << 8);
-  // Output voltage is in volts directly, no scaling needed (unlike battery voltage)
-  data.power.output_voltage = static_cast<float>(voltage_raw);
-
-  ESP_LOGD(EATON_TAG, "Output voltage: %.1fV (raw: 0x%02X%02X = %d)",
-           data.power.output_voltage, report.data[2], report.data[1], voltage_raw);
-}
-*/
 void EatonProtocol::parse_battery_system_report(const HidReport &report, UpsData &data) {
   if (report.data.size() < 8) {
     ESP_LOGW(EATON_TAG, "Load percentage report too short: %zu bytes", report.data.size());
@@ -543,7 +533,8 @@ void EatonProtocol::check_battery_voltage_scaling(float battery_voltage, float n
   battery_scale_checked_ = true;
 }
 
-void EatonProtocol::parse_battery_voltage_nominal_report(const HidReport &report, UpsData &data) {
+/*
+void EatonProtocol::parse_battery_voltage_report(const HidReport &report, UpsData &data) {
   if (report.data.size() < 2) {
     ESP_LOGW(EATON_TAG, "Battery voltage nominal report too short: %zu bytes", report.data.size());
     return;
@@ -559,6 +550,7 @@ void EatonProtocol::parse_battery_voltage_nominal_report(const HidReport &report
   ESP_LOGD(EATON_TAG, "Battery voltage nominal: %.0fV (raw: 0x%02X = %d)",
            data.battery.voltage_nominal, voltage_raw, voltage_raw);
 }
+*/
 
 void EatonProtocol::parse_beeper_status_report(const HidReport &report, UpsData &data) {
   if (report.data.size() < 2) {
@@ -590,13 +582,13 @@ void EatonProtocol::parse_beeper_status_report(const HidReport &report, UpsData 
            data.config.beeper_status.c_str(), beeper_raw, beeper_raw);
 }
 
-void EatonProtocol::parse_output_voltage_nominal_report(const HidReport &report, UpsData &data) {
+void EatonProtocol::parse_config_voltage_report(const HidReport &report, UpsData &data) {
   if (report.data.size() < 2) {
-    ESP_LOGW(EATON_TAG, "Output voltage nominal report too short: %zu bytes", report.data.size());
+    ESP_LOGW(EATON_TAG, "Config voltage report too short: %zu bytes", report.data.size());
     return;
   }
 
-  ESP_LOGD(EATON_TAG, "Output voltage nominal size: %zu", report.data.size());
+  ESP_LOGD(EATON_TAG, "Config voltage size: %zu", report.data.size());
 
   // Path: UPS.Flow.[4].ConfigVoltage, Type: Feature, ReportID: 0x12, Offset: 0, Size: 8
 
@@ -643,7 +635,7 @@ void EatonProtocol::parse_input_transfer_low_report(const HidReport &report, Ups
            data.power.input_transfer_low);
 }
 
-/*
+
 void EatonProtocol::parse_delay_shutdown_report(const HidReport &report, UpsData &data) {
   if (report.data.size() < 3) {
     ESP_LOGW(EATON_TAG, "Delay shutdown report too short: %zu bytes", report.data.size());
@@ -651,20 +643,17 @@ void EatonProtocol::parse_delay_shutdown_report(const HidReport &report, UpsData
   }
 
   // Path: UPS.PowerSummary.DelayBeforeShutdown, Type: Feature, ReportID: 0x09, Offset: 0, Size: 32
-  // Path: UPS.PowerSummary.DelayBeforeStartup, Type: Feature, ReportID: 0x0a, Offset: 0, Size: 32
-
-  // NUT debug shows: Report 0x15, Value: -60 (DelayBeforeShutdown)
   // Handle 0xFFFF as "disabled" (not -1)
-  //uint16_t delay_raw_unsigned = report.data[1] | (report.data[2] << 8);
-  //if (delay_raw_unsigned == 0xFFFF) {
-    // When disabled, use NUT default for Eaton (DEFAULT_OFFDELAY_CPS = 60)
-//    data.config.delay_shutdown = defaults::SHUTDOWN_DELAY_SEC;
- //   ESP_LOGD(EATON_TAG, "UPS delay shutdown: %d seconds (default, raw: 0xFFFF)", defaults::Eaton_SHUTDOWN_DELAY_SEC);
- // } else {
-  //  int16_t delay_raw = static_cast<int16_t>(delay_raw_unsigned);
-  //  data.config.delay_shutdown = delay_raw;
-  //  ESP_LOGD(EATON_TAG, "UPS delay shutdown: %d seconds", data.config.delay_shutdown);
- // }
+  uint16_t delay_raw_unsigned = report.data[1] | (report.data[2] << 8);
+  if (delay_raw_unsigned == 0xFFFF) {
+    // When disabled, use NUT default for Eaton (DEFAULT_OFFDELAY = 20)
+    data.config.delay_shutdown = defaults::EATON_SHUTDOWN_DELAY_SEC;
+   ESP_LOGD(EATON_TAG, "UPS delay shutdown: %d seconds (default, raw: 0xFFFF)", defaults::EATON_SHUTDOWN_DELAY_SEC);
+  } else {
+    int16_t delay_raw = static_cast<int16_t>(delay_raw_unsigned);
+    data.config.delay_shutdown = delay_raw;
+    ESP_LOGD(EATON_TAG, "UPS delay shutdown: %d seconds", data.config.delay_shutdown);
+  }
 }
 
 void EatonProtocol::parse_delay_start_report(const HidReport &report, UpsData &data) {
@@ -673,11 +662,11 @@ void EatonProtocol::parse_delay_start_report(const HidReport &report, UpsData &d
     return;
   }
 
-  // NUT debug shows: Report 0x16, Value: -60 (DelayBeforeStartup)
+  // Path: UPS.PowerSummary.DelayBeforeStartup, Type: Feature, ReportID: 0x0a, Offset: 0, Size: 32
   // Handle 0xFFFF as "disabled" (not -1)
-  /*uint16_t delay_raw_unsigned = report.data[1] | (report.data[2] << 8);
+  uint16_t delay_raw_unsigned = report.data[1] | (report.data[2] << 8);
   if (delay_raw_unsigned == 0xFFFF) {
-    // When disabled, use NUT default for Eaton (DEFAULT_ONDELAY_CPS = 120)
+    // When disabled, use NUT default for Eaton (DEFAULT_ONDELAY = 30)
     data.config.delay_start = defaults::EATON_STARTUP_DELAY_SEC;
     ESP_LOGD(EATON_TAG, "UPS delay start: %d seconds (default, raw: 0xFFFF)", defaults::EATON_STARTUP_DELAY_SEC);
   } else {
@@ -686,7 +675,7 @@ void EatonProtocol::parse_delay_start_report(const HidReport &report, UpsData &d
     ESP_LOGD(EATON_TAG, "UPS delay start: %d seconds", data.config.delay_start);
   }
 }
-*/
+
 /*void EatonProtocol::parse_realpower_nominal_report(const HidReport &report, UpsData &data) {
   if (report.data.size() < 3) {
     ESP_LOGW(EATON_TAG, "Real power nominal report too short: %zu bytes", report.data.size());
@@ -863,13 +852,7 @@ void EatonProtocol::read_missing_dynamic_values(UpsData &data) {
   ESP_LOGD(EATON_TAG, "Completed reading Eaton missing dynamic values");
 }
 
-
 void EatonProtocol::parse_battery_capacity_report(const HidReport &report, UpsData &data) {
-  // This is the same as the capacity limits report - just a cleaner interface
-  parse_battery_capacity_limits_report(report, data);
-}
-
-void EatonProtocol::parse_battery_capacity_limits_report(const HidReport &report, UpsData &data) {
   if (report.data.size() < 2) {
     ESP_LOGW(EATON_TAG, "Battery capacity limits report too short: %zu bytes", report.data.size());
     return;
@@ -1214,7 +1197,7 @@ if (report.data.size() >= 4) {
 
   return NAN;
 }
-
+/*
 void EatonProtocol::parse_manufacturing_date_report(const HidReport &report, UpsData &data) {
   if (report.data.size() < 4) {
     ESP_LOGD(EATON_TAG, "Manufacturing date report 0x%02X too short: %zu bytes", report.report_id, report.data.size());
@@ -1261,6 +1244,7 @@ void EatonProtocol::parse_manufacturing_date_report(const HidReport &report, Ups
   ESP_LOGD(EATON_TAG, "Could not decode manufacturing date from report 0x%02X (%zu bytes)",
            report.report_id, report.data.size());
 }
+            */
 /*
 bool EatonProtocol::read_timer_data(UpsData &data) {
   ESP_LOGD(EATON_TAG, "Reading Eaton timer countdown data");
