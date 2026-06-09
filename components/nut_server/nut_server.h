@@ -56,7 +56,7 @@ struct NutClient {
   std::string remote_ip;
   std::string temp_username;  // For USERNAME/PASSWORD flow
   std::string temp_password;  // For USERNAME/PASSWORD flow
-  
+
   bool is_authenticated() const { return state == ClientState::AUTHENTICATED; }
   bool is_active() const { return socket_fd >= 0 && state != ClientState::DISCONNECTED; }
   void reset() {
@@ -89,8 +89,8 @@ public:
   void set_port(uint16_t port) { port_ = port; }
   void set_username(const std::string &username) { username_ = username; }
   void set_password(const std::string &password) { password_ = password; }
-  void set_max_clients(uint8_t max_clients) { 
-    max_clients_ = std::min(max_clients, static_cast<uint8_t>(10)); 
+  void set_max_clients(uint8_t max_clients) {
+    max_clients_ = std::min(max_clients, static_cast<uint8_t>(10));
   }
   void set_ups_name(const std::string &ups_name) { ups_name_ = ups_name; }
 
@@ -102,7 +102,7 @@ protected:
   void handle_client(NutClient &client);
   void disconnect_client(NutClient &client);
   void cleanup_inactive_clients();
-  
+
   // NUT protocol handlers
   void process_command(NutClient &client, const std::string &command);
   void handle_login(NutClient &client, const std::string &args);
@@ -126,7 +126,7 @@ protected:
   void handle_list_enum(NutClient &client, const std::string &args);
   void handle_list_range(NutClient &client, const std::string &args);
   void handle_legacy_list_vars(NutClient &client, const std::string &ups_name);
-  
+
   // Helper methods
   bool send_response(NutClient &client, const std::string &response);
   bool send_error(NutClient &client, const std::string &error);
@@ -138,7 +138,7 @@ protected:
   bool execute_command(const std::string &command);
   std::string format_nut_value(const std::string &value);
   std::vector<std::string> split_args(const std::string &args);
-  
+
   // Data access using provider pattern (like status LED component)
   bool has_ups_data() const;
   std::string get_ups_status() const;
@@ -150,24 +150,24 @@ private:
   static void server_task(void *param);
   TaskHandle_t server_task_handle_{nullptr};
   bool server_running_{false};
-  
+
   // Network resources
   int server_socket_{-1};
   uint16_t port_{DEFAULT_NUT_PORT};
-  
+
   // Client management
   std::vector<NutClient> clients_;
   uint8_t max_clients_{DEFAULT_MAX_CLIENTS};
   mutable std::mutex clients_mutex_;
-  
+
   // Authentication
   std::string username_{"nutuser"};
   std::string password_{"nutpass"};
-  
+
   // UPS configuration
   std::string ups_name_{"ups"};
   ups_hid::UpsHidComponent *ups_hid_{nullptr};
-  
+
   // Server state
   mutable std::mutex server_mutex_;
   bool shutdown_requested_{false};

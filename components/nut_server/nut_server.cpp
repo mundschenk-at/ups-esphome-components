@@ -7,8 +7,8 @@
 #include <sstream>
 #include <iomanip>
 #include <cstring>
-
 #ifdef USE_ESP32
+#include "lwip/sockets.h"
 #include "lwip/err.h"
 #include "lwip/sys.h"
 #include <fcntl.h>
@@ -28,25 +28,25 @@ NutServerComponent::~NutServerComponent() {
 
 void NutServerComponent::setup() {
   ESP_LOGCONFIG(TAG, "Setting up NUT Server...");
-  
+
   if (!ups_hid_) {
     ESP_LOGE(TAG, "No UPS HID component configured!");
     mark_failed();
     return;
   }
-  
+
   // Initialize clients
   clients_.resize(max_clients_);
   for (auto &client : clients_) {
     client.reset();
   }
-  
+
   if (!start_server()) {
     ESP_LOGE(TAG, "Failed to start NUT server!");
     mark_failed();
     return;
   }
-  
+
   ESP_LOGCONFIG(TAG, "NUT Server started on port %d", port_);
 }
 
@@ -62,7 +62,7 @@ void NutServerComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "  UPS Name: %s", get_ups_name().c_str());
   ESP_LOGCONFIG(TAG, "  Username: %s", username_.c_str());
   ESP_LOGCONFIG(TAG, "  Authentication: %s", password_.empty() ? "Disabled" : "Enabled");
-  
+
   if (ups_hid_) {
     ESP_LOGCONFIG(TAG, "  UPS HID Component: Connected");
   } else {
@@ -73,38 +73,38 @@ void NutServerComponent::dump_config() {
 bool NutServerComponent::start_server() {
 #ifdef USE_ESP32
   // Create server socket
-  server_socket_ = socket(AF_INET, SOCK_STREAM, 0);
+  server_socket_ = ::socket(AF_INET, SOCK_STREAM, 0);
   if (server_socket_ < 0) {
     ESP_LOGE(TAG, "Failed to create socket: %d", errno);
     return false;
   }
-  
+
   // Set socket options
   int yes = 1;
   if (setsockopt(server_socket_, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0) {
     ESP_LOGW(TAG, "Failed to set SO_REUSEADDR: %d", errno);
   }
-  
+
   // Set non-blocking mode
   int flags = fcntl(server_socket_, F_GETFL, 0);
   if (fcntl(server_socket_, F_SETFL, flags | O_NONBLOCK) < 0) {
     ESP_LOGW(TAG, "Failed to set non-blocking mode: %d", errno);
   }
-  
+
   // Bind to port
   struct sockaddr_in server_addr;
   memset(&server_addr, 0, sizeof(server_addr));
   server_addr.sin_family = AF_INET;
   server_addr.sin_addr.s_addr = INADDR_ANY;
   server_addr.sin_port = htons(port_);
-  
+
   if (bind(server_socket_, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
     ESP_LOGE(TAG, "Failed to bind to port %d: %d", port_, errno);
     close(server_socket_);
     server_socket_ = -1;
     return false;
   }
-  
+
   // Start listening
   if (listen(server_socket_, max_clients_) < 0) {
     ESP_LOGE(TAG, "Failed to listen on socket: %d", errno);
@@ -112,11 +112,11 @@ bool NutServerComponent::start_server() {
     server_socket_ = -1;
     return false;
   }
-  
+
   // Create server task
   server_running_ = true;
   xTaskCreate(server_task, "nut_server", 4096, this, 1, &server_task_handle_);
-  
+
   return true;
 #else
   ESP_LOGE(TAG, "NUT Server requires ESP32 platform");
@@ -128,7 +128,7 @@ void NutServerComponent::stop_server() {
 #ifdef USE_ESP32
   shutdown_requested_ = true;
   server_running_ = false;
-  
+
   // Close all client connections
   {
     std::lock_guard<std::mutex> lock(clients_mutex_);
@@ -138,13 +138,13 @@ void NutServerComponent::stop_server() {
       }
     }
   }
-  
+
   // Close server socket
   if (server_socket_ >= 0) {
     close(server_socket_);
     server_socket_ = -1;
   }
-  
+
   // Wait for server task to finish
   if (server_task_handle_) {
     vTaskDelete(server_task_handle_);
@@ -156,10 +156,10 @@ void NutServerComponent::stop_server() {
 void NutServerComponent::server_task(void *param) {
 #ifdef USE_ESP32
   NutServerComponent *server = static_cast<NutServerComponent *>(param);
-  
+
   while (server->server_running_) {
     server->accept_clients();
-    
+
     // Handle all connected clients
     {
       std::lock_guard<std::mutex> lock(server->clients_mutex_);
@@ -169,10 +169,10 @@ void NutServerComponent::server_task(void *param) {
         }
       }
     }
-    
+
     vTaskDelay(10 / portTICK_PERIOD_MS);
   }
-  
+
   vTaskDelete(nullptr);
 #endif
 }
@@ -181,7 +181,7 @@ void NutServerComponent::accept_clients() {
 #ifdef USE_ESP32
   struct sockaddr_in client_addr;
   socklen_t client_len = sizeof(client_addr);
-  
+
   int client_socket = accept(server_socket_, (struct sockaddr *)&client_addr, &client_len);
   if (client_socket < 0) {
     if (errno != EWOULDBLOCK && errno != EAGAIN) {
@@ -189,11 +189,11 @@ void NutServerComponent::accept_clients() {
     }
     return;
   }
-  
+
   // Set client socket to non-blocking
   int flags = fcntl(client_socket, F_GETFL, 0);
   fcntl(client_socket, F_SETFL, flags | O_NONBLOCK);
-  
+
   // Find available client slot
   std::lock_guard<std::mutex> lock(clients_mutex_);
   for (auto &client : clients_) {
@@ -205,14 +205,14 @@ void NutServerComponent::accept_clients() {
       client.connect_time = now;
       client.login_attempts = 0;
       client.remote_ip = std::string(inet_ntoa(client_addr.sin_addr));
-      
+
       ESP_LOGD(TAG, "Client connected from %s", client.remote_ip.c_str());
-      
+
       // NUT protocol: No initial greeting - wait for client commands
       return;
     }
   }
-  
+
   // No available slots
   ESP_LOGW(TAG, "Maximum clients reached, rejecting connection");
   const char *msg = "ERR MAX-CLIENTS Maximum number of clients reached\n";
@@ -225,21 +225,21 @@ void NutServerComponent::handle_client(NutClient &client) {
 #ifdef USE_ESP32
   char buffer[MAX_COMMAND_LENGTH];
   int bytes_received = recv(client.socket_fd, buffer, sizeof(buffer) - 1, 0);
-  
+
   if (bytes_received > 0) {
     buffer[bytes_received] = '\0';
-    
+
     // Remove trailing newline
     char *newline = strchr(buffer, '\n');
     if (newline) *newline = '\0';
     newline = strchr(buffer, '\r');
     if (newline) *newline = '\0';
-    
+
     client.last_activity = millis();
-    
+
     ESP_LOGV(TAG, "Received command: %s", buffer);
     process_command(client, std::string(buffer));
-    
+
   } else if (bytes_received == 0) {
     // Client disconnected
     ESP_LOGD(TAG, "Client disconnected");
@@ -271,7 +271,7 @@ void NutServerComponent::disconnect_client(NutClient &client) {
 void NutServerComponent::cleanup_inactive_clients() {
   uint32_t now = millis();
   std::lock_guard<std::mutex> lock(clients_mutex_);
-  
+
   for (auto &client : clients_) {
     if (client.is_active() && (now - client.last_activity) > CLIENT_TIMEOUT_MS) {
       ESP_LOGD(TAG, "Client timeout, disconnecting");
@@ -284,20 +284,20 @@ void NutServerComponent::process_command(NutClient &client, const std::string &c
   if (command.empty()) {
     return;
   }
-  
+
   // Parse command and arguments
   size_t space_pos = command.find(' ');
-  std::string cmd = (space_pos != std::string::npos) ? 
+  std::string cmd = (space_pos != std::string::npos) ?
                      command.substr(0, space_pos) : command;
-  std::string args = (space_pos != std::string::npos) ? 
+  std::string args = (space_pos != std::string::npos) ?
                       command.substr(space_pos + 1) : "";
-  
+
   // Debug: Log all received commands
   ESP_LOGD(TAG, "Received command: '%s' args: '%s'", cmd.c_str(), args.c_str());
-  
+
   // Convert command to uppercase for comparison
   std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::toupper);
-  
+
   // Commands that don't require authentication
   if (cmd == "HELP") {
     handle_help(client);
@@ -326,13 +326,13 @@ void NutServerComponent::process_command(NutClient &client, const std::string &c
     if (cmd == "LIST") {
       // Parse LIST subcommand
       size_t sub_pos = args.find(' ');
-      std::string subcmd = (sub_pos != std::string::npos) ? 
+      std::string subcmd = (sub_pos != std::string::npos) ?
                            args.substr(0, sub_pos) : args;
-      std::string subargs = (sub_pos != std::string::npos) ? 
+      std::string subargs = (sub_pos != std::string::npos) ?
                             args.substr(sub_pos + 1) : "";
-      
+
       std::transform(subcmd.begin(), subcmd.end(), subcmd.begin(), ::toupper);
-      
+
       if (subcmd == "UPS") {
         handle_list_ups(client);
       } else if (subcmd == "VAR") {
@@ -353,13 +353,13 @@ void NutServerComponent::process_command(NutClient &client, const std::string &c
     } else if (cmd == "GET") {
       // Parse GET subcommand
       size_t sub_pos = args.find(' ');
-      std::string subcmd = (sub_pos != std::string::npos) ? 
+      std::string subcmd = (sub_pos != std::string::npos) ?
                            args.substr(0, sub_pos) : args;
-      std::string subargs = (sub_pos != std::string::npos) ? 
+      std::string subargs = (sub_pos != std::string::npos) ?
                             args.substr(sub_pos + 1) : "";
-      
+
       std::transform(subcmd.begin(), subcmd.end(), subcmd.begin(), ::toupper);
-      
+
       if (subcmd == "VAR") {
         handle_get_var(client, subargs);
       } else {
@@ -368,13 +368,13 @@ void NutServerComponent::process_command(NutClient &client, const std::string &c
     } else if (cmd == "SET") {
       // Parse SET subcommand
       size_t sub_pos = args.find(' ');
-      std::string subcmd = (sub_pos != std::string::npos) ? 
+      std::string subcmd = (sub_pos != std::string::npos) ?
                            args.substr(0, sub_pos) : args;
-      std::string subargs = (sub_pos != std::string::npos) ? 
+      std::string subargs = (sub_pos != std::string::npos) ?
                             args.substr(sub_pos + 1) : "";
-      
+
       std::transform(subcmd.begin(), subcmd.end(), subcmd.begin(), ::toupper);
-      
+
       if (subcmd == "VAR") {
         handle_set_var(client, subargs);
       } else {
@@ -444,7 +444,7 @@ void NutServerComponent::handle_logout(NutClient &client) {
 void NutServerComponent::handle_list_ups(NutClient &client) {
   std::string ups_name = get_ups_name();
   std::string ups_description = get_ups_description();
-  
+
   std::string response = "BEGIN LIST UPS\n";
   response += "UPS " + ups_name + " \"" + ups_description + "\"\n";
   response += "END LIST UPS\n";
@@ -456,32 +456,32 @@ void NutServerComponent::handle_list_var(NutClient &client, const std::string &a
     send_error(client, "UNKNOWN-UPS");
     return;
   }
-  
+
   if (!has_ups_data()) {
     send_error(client, "DATA-STALE");
     return;
   }
-  
+
   std::string ups_name = get_ups_name();
   std::string response = "BEGIN LIST VAR " + ups_name + "\n";
-  
+
   // Standard NUT variables mapping to actual UPS data
   std::vector<std::string> variables = {
     "ups.mfr", "ups.model", "ups.status", "ups.serial", "ups.firmware",
     "battery.charge", "battery.voltage", "battery.voltage.nominal", "battery.runtime",
-    "input.voltage", "input.voltage.nominal", "input.frequency", 
+    "input.voltage", "input.voltage.nominal", "input.frequency",
     "input.transfer.low", "input.transfer.high",
-    "output.voltage", "output.voltage.nominal", 
+    "output.voltage", "output.voltage.nominal",
     "ups.load", "ups.realpower.nominal", "ups.power.nominal"
   };
-  
+
   for (const auto &var : variables) {
     std::string value = get_ups_var(var);
     if (!value.empty()) {
       response += "VAR " + ups_name + " " + var + " \"" + value + "\"\n";
     }
   }
-  
+
   response += "END LIST VAR " + ups_name + "\n";
   send_response(client, response);
 }
@@ -492,12 +492,12 @@ void NutServerComponent::handle_get_var(NutClient &client, const std::string &ar
     send_error(client, "INVALID-ARGUMENT");
     return;
   }
-  
+
   if (parts[0] != get_ups_name()) {
     send_error(client, "UNKNOWN-UPS");
     return;
   }
-  
+
   std::string value = get_ups_var(parts[1]);
   if (!value.empty()) {
     std::string response = "VAR " + get_ups_name() + " " + parts[1] + " \"" + value + "\"\n";
@@ -512,65 +512,65 @@ void NutServerComponent::handle_list_cmd(NutClient &client, const std::string &a
     send_error(client, "UNKNOWN-UPS");
     return;
   }
-  
+
   std::string response = "BEGIN LIST CMD " + get_ups_name() + "\n";
-  
+
   auto commands = get_available_commands();
   for (const auto &cmd : commands) {
     response += "CMD " + get_ups_name() + " " + cmd + "\n";
   }
-  
+
   response += "END LIST CMD " + get_ups_name() + "\n";
   send_response(client, response);
 }
 
 void NutServerComponent::handle_list_clients(NutClient &client) {
   std::string response = "BEGIN LIST CLIENT\n";
-  
+
   uint32_t now = millis();
   // Note: clients_mutex_ is already held by the calling context (server loop)
-  
+
   for (size_t i = 0; i < clients_.size(); ++i) {
     const auto &c = clients_[i];
     if (c.is_active()) {
       // Format: CLIENT <ip> <connected_time> <status>
       std::string status = c.is_authenticated() ? "authenticated" : "connected";
       uint32_t connected_time = (now - c.connect_time) / 1000; // seconds
-      
+
       response += "CLIENT " + c.remote_ip + " " + std::to_string(connected_time) + " " + status + "\n";
     }
   }
-  
+
   response += "END LIST CLIENT\n";
   send_response(client, response);
 }
 
 void NutServerComponent::handle_instcmd(NutClient &client, const std::string &args) {
   ESP_LOGD(TAG, "INSTCMD received with args: '%s'", args.c_str());
-  
+
   auto parts = split_args(args);
   ESP_LOGD(TAG, "INSTCMD parsed into %zu parts", parts.size());
   for (size_t i = 0; i < parts.size(); ++i) {
     ESP_LOGD(TAG, "  Part %zu: '%s'", i, parts[i].c_str());
   }
-  
+
   if (parts.size() != 2) {
     ESP_LOGW(TAG, "INSTCMD invalid argument count: %zu (expected 2)", parts.size());
     send_error(client, "INVALID-ARGUMENT");
     return;
   }
-  
+
   ESP_LOGD(TAG, "UPS name comparison: received='%s', expected='%s'", parts[0].c_str(), get_ups_name().c_str());
   if (parts[0] != get_ups_name()) {
     ESP_LOGW(TAG, "INSTCMD unknown UPS: '%s'", parts[0].c_str());
     send_error(client, "UNKNOWN-UPS");
     return;
   }
-  
+
   ESP_LOGD(TAG, "Executing command: '%s'", parts[1].c_str());
   bool cmd_result = execute_command(parts[1]);
   ESP_LOGD(TAG, "Command execution result: %s", cmd_result ? "SUCCESS" : "FAILED");
-  
+
   if (cmd_result) {
     send_response(client, "OK\n");
   } else {
@@ -610,7 +610,7 @@ void NutServerComponent::handle_username(NutClient &client, const std::string &a
     send_error(client, "INVALID-ARGUMENT");
     return;
   }
-  
+
   client.temp_username = args;
   ESP_LOGD(TAG, "Received username: %s", args.c_str());
   send_response(client, "OK\n");
@@ -621,10 +621,10 @@ void NutServerComponent::handle_password(NutClient &client, const std::string &a
     send_error(client, "INVALID-ARGUMENT");
     return;
   }
-  
+
   client.temp_password = args;
   ESP_LOGD(TAG, "Received password (authentication attempt)");
-  
+
   // Attempt authentication with stored credentials
   if (authenticate(client.temp_username, client.temp_password)) {
     client.state = ClientState::AUTHENTICATED;
@@ -641,7 +641,7 @@ void NutServerComponent::handle_password(NutClient &client, const std::string &a
       send_error(client, "ACCESS-DENIED");
     }
   }
-  
+
   // Clear temporary credentials
   client.temp_username.clear();
   client.temp_password.clear();
@@ -665,7 +665,7 @@ void NutServerComponent::handle_list_rwvar(NutClient &client, const std::string 
     send_error(client, "UNKNOWN-UPS");
     return;
   }
-  
+
   std::string response = "BEGIN LIST RW " + get_ups_name() + "\n";
   response += "END LIST RW " + get_ups_name() + "\n";
   send_response(client, response);
@@ -678,7 +678,7 @@ void NutServerComponent::handle_list_enum(NutClient &client, const std::string &
     send_error(client, "INVALID-ARGUMENT");
     return;
   }
-  
+
   std::string response = "BEGIN LIST ENUM " + get_ups_name() + " " + parts[1] + "\n";
   response += "END LIST ENUM " + get_ups_name() + " " + parts[1] + "\n";
   send_response(client, response);
@@ -691,7 +691,7 @@ void NutServerComponent::handle_list_range(NutClient &client, const std::string 
     send_error(client, "INVALID-ARGUMENT");
     return;
   }
-  
+
   std::string response = "BEGIN LIST RANGE " + get_ups_name() + " " + parts[1] + "\n";
   response += "END LIST RANGE " + get_ups_name() + " " + parts[1] + "\n";
   send_response(client, response);
@@ -703,9 +703,9 @@ void NutServerComponent::handle_legacy_list_vars(NutClient &client, const std::s
     send_error(client, "DATA-STALE");
     return;
   }
-  
+
   std::string response = "";
-  
+
   // Simple list format for legacy upsc -l support
   response += "ups.mfr\n";
   response += "ups.model\n";
@@ -715,7 +715,7 @@ void NutServerComponent::handle_legacy_list_vars(NutClient &client, const std::s
   response += "ups.load\n";
   response += "battery.runtime\n";
   response += "ups.status\n";
-  
+
   send_response(client, response);
 }
 
@@ -753,14 +753,14 @@ std::string NutServerComponent::get_ups_var(const std::string &var_name) {
   if (!has_ups_data()) {
     return "";
   }
-  
+
   // Map variable names to data using data provider pattern
   if (var_name == "ups.mfr") return get_ups_manufacturer();
   if (var_name == "ups.model") return get_ups_model();
-  
+
   if (ups_hid_) {
     auto ups_data = ups_hid_->get_ups_data();
-    
+
     // Device information variables
     if (var_name == "ups.serial" && !ups_data.device.serial_number.empty()) {
       return ups_data.device.serial_number;
@@ -768,7 +768,7 @@ std::string NutServerComponent::get_ups_var(const std::string &var_name) {
     if (var_name == "ups.firmware" && !ups_data.device.firmware_version.empty()) {
       return ups_data.device.firmware_version;
     }
-    
+
     // Battery variables
     if (var_name == "battery.charge") {
       float battery_level = ups_hid_->get_battery_level();
@@ -784,7 +784,7 @@ std::string NutServerComponent::get_ups_var(const std::string &var_name) {
       float runtime_minutes = ups_hid_->get_runtime_minutes();
       if (runtime_minutes > 0) return std::to_string(static_cast<int>(runtime_minutes * 60));
     }
-    
+
     // Input power variables
     if (var_name == "input.voltage") {
       float input_voltage = ups_hid_->get_input_voltage();
@@ -802,7 +802,7 @@ std::string NutServerComponent::get_ups_var(const std::string &var_name) {
     if (var_name == "input.transfer.high" && !std::isnan(ups_data.power.input_transfer_high)) {
       return format_nut_value(std::to_string(ups_data.power.input_transfer_high));
     }
-    
+
     // Output power variables
     if (var_name == "output.voltage") {
       float output_voltage = ups_hid_->get_output_voltage();
@@ -811,7 +811,7 @@ std::string NutServerComponent::get_ups_var(const std::string &var_name) {
     if (var_name == "output.voltage.nominal" && !std::isnan(ups_data.power.output_voltage_nominal)) {
       return format_nut_value(std::to_string(ups_data.power.output_voltage_nominal));
     }
-    
+
     // Load and power variables
     if (var_name == "ups.load") {
       float load_percent = ups_hid_->get_load_percent();
@@ -824,11 +824,11 @@ std::string NutServerComponent::get_ups_var(const std::string &var_name) {
       return std::to_string(static_cast<int>(ups_data.power.apparent_power_nominal));
     }
   }
-  
+
   if (var_name == "ups.status") {
     return get_ups_status();
   }
-  
+
   return "";
 }
 
@@ -842,10 +842,10 @@ std::string NutServerComponent::get_ups_description() {
   if (!has_ups_data()) {
     return "ESPHome UPS";
   }
-  
+
   std::string manufacturer = get_ups_manufacturer();
   std::string model = get_ups_model();
-  
+
   std::string desc = manufacturer;
   if (!desc.empty() && !model.empty()) {
     desc += " " + model;
@@ -857,11 +857,11 @@ std::string NutServerComponent::get_ups_description() {
 
 std::vector<std::string> NutServerComponent::get_available_commands() {
   std::vector<std::string> commands;
-  
+
   if (ups_hid_ && ups_hid_->is_connected()) {
     // Standard UPS HID commands that are always available
     commands.push_back("beeper.enable");
-    commands.push_back("beeper.disable"); 
+    commands.push_back("beeper.disable");
     commands.push_back("beeper.mute");
     commands.push_back("beeper.test");
     commands.push_back("test.battery.start.quick");
@@ -874,7 +874,7 @@ std::vector<std::string> NutServerComponent::get_available_commands() {
     commands.push_back("test.ups.start");
     commands.push_back("test.ups.stop");
   }
-  
+
   return commands;
 }
 
@@ -882,7 +882,7 @@ bool NutServerComponent::execute_command(const std::string &command) {
   if (!ups_hid_) {
     return false;
   }
-  
+
   // Map NUT commands to specific UPS HID methods
   if (command == "beeper.enable") {
     return ups_hid_->beeper_enable();
@@ -903,7 +903,7 @@ bool NutServerComponent::execute_command(const std::string &command) {
   } else if (command == "test.panel.stop" || command == "test.ups.stop") {
     return ups_hid_->stop_ups_test();
   }
-  
+
   return false;
 }
 
@@ -925,7 +925,7 @@ std::vector<std::string> NutServerComponent::split_args(const std::string &args)
   std::vector<std::string> result;
   std::istringstream iss(args);
   std::string token;
-  
+
   while (iss >> token) {
     // Handle quoted strings
     if (token.front() == '"') {
@@ -942,7 +942,7 @@ std::vector<std::string> NutServerComponent::split_args(const std::string &args)
       result.push_back(token);
     }
   }
-  
+
   return result;
 }
 
@@ -954,29 +954,29 @@ std::string NutServerComponent::get_ups_status() const {
   if (!ups_hid_ || !ups_hid_->is_connected()) {
     return "";
   }
-  
+
   std::string status;
   if (ups_hid_->is_online()) {
     status = "OL";  // Online
   } else if (ups_hid_->is_on_battery()) {
     status = "OB";  // On Battery
   }
-  
+
   if (ups_hid_->is_low_battery()) {
     if (!status.empty()) status += " ";
     status += "LB";  // Low Battery
   }
-  
+
   if (ups_hid_->is_charging()) {
     if (!status.empty()) status += " ";
     status += "CHRG";  // Charging
   }
-  
+
   if (ups_hid_->has_fault()) {
     if (!status.empty()) status += " ";
     status += "ALARM";  // Alarm condition
   }
-  
+
   return status;
 }
 
