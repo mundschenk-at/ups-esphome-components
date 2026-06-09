@@ -34,12 +34,12 @@ class EatonProtocol : public UpsProtocolBase {
 */
   // Timer polling for real-time countdown
   //bool read_timer_data(UpsData &data) override;
-/*
+
   // Delay configuration methods
   bool set_shutdown_delay(int seconds) override;
   bool set_start_delay(int seconds) override;
   bool set_reboot_delay(int seconds) override;
-*/
+
  private:
   // Report ID constants (based on NUT debug logs)
   static const uint8_t PRESENT_STATUS_REPORT_ID = 0x01;          // Status bitmap

@@ -643,16 +643,19 @@ void EatonProtocol::parse_delay_shutdown_report(const HidReport &report, UpsData
   }
 
   // Path: UPS.PowerSummary.DelayBeforeShutdown, Type: Feature, ReportID: 0x09, Offset: 0, Size: 32
-  // Handle 0xFFFF as "disabled" (not -1)
-  uint16_t delay_raw_unsigned = report.data[1] | (report.data[2] << 8);
-  if (delay_raw_unsigned == 0xFFFF) {
+
+  // NUT debug: ReportID: 0x09, Value: -1 (but NUT output shows ups.delay.shutdown: 20)
+  // This suggests NUT does additional processing/conversion
+  // Data format: [ID, delay_low, delay_high] - 16-bit signed little endian
+  int16_t delay_raw = static_cast<int16_t>(report.data[1] | (report.data[2] << 8));
+
+  if (delay_raw == -1) {
     // When disabled, use NUT default for Eaton (DEFAULT_OFFDELAY = 20)
     data.config.delay_shutdown = defaults::EATON_SHUTDOWN_DELAY_SEC;
-   ESP_LOGD(EATON_TAG, "UPS delay shutdown: %d seconds (default, raw: 0xFFFF)", defaults::EATON_SHUTDOWN_DELAY_SEC);
+    ESP_LOGD(EATON_TAG, "UPS delay shutdown: %d seconds (default, raw: %d)", defaults::EATON_SHUTDOWN_DELAY_SEC, delay_raw);
   } else {
-    int16_t delay_raw = static_cast<int16_t>(delay_raw_unsigned);
     data.config.delay_shutdown = delay_raw;
-    ESP_LOGD(EATON_TAG, "UPS delay shutdown: %d seconds", data.config.delay_shutdown);
+    ESP_LOGI(EATON_TAG, "UPS delay shutdown: %d seconds (raw: %d)", data.config.delay_shutdown, delay_raw);
   }
 }
 
@@ -663,16 +666,19 @@ void EatonProtocol::parse_delay_start_report(const HidReport &report, UpsData &d
   }
 
   // Path: UPS.PowerSummary.DelayBeforeStartup, Type: Feature, ReportID: 0x0a, Offset: 0, Size: 32
-  // Handle 0xFFFF as "disabled" (not -1)
-  uint16_t delay_raw_unsigned = report.data[1] | (report.data[2] << 8);
-  if (delay_raw_unsigned == 0xFFFF) {
+
+  // NUT debug: ReportID: 0x0a, Value: -1 (but NUT output shows ups.delay.start: 30)
+  // This suggests NUT does additional processing/conversion
+  // Data format: [ID, delay_low, delay_high] - 16-bit signed little endian
+  int16_t delay_raw = static_cast<int16_t>(report.data[1] | (report.data[2] << 8));
+
+  if (delay_raw == -1) {
     // When disabled, use NUT default for Eaton (DEFAULT_ONDELAY = 30)
     data.config.delay_start = defaults::EATON_STARTUP_DELAY_SEC;
-    ESP_LOGD(EATON_TAG, "UPS delay start: %d seconds (default, raw: 0xFFFF)", defaults::EATON_STARTUP_DELAY_SEC);
+    ESP_LOGD(EATON_TAG, "UPS delay start: %d seconds (default, raw: %d)", defaults::EATON_STARTUP_DELAY_SEC, delay_raw);
   } else {
-    int16_t delay_raw = static_cast<int16_t>(delay_raw_unsigned);
     data.config.delay_start = delay_raw;
-    ESP_LOGD(EATON_TAG, "UPS delay start: %d seconds", data.config.delay_start);
+    ESP_LOGI(EATON_TAG, "UPS delay start: %d seconds (raw: %d)", data.config.delay_start, delay_raw);
   }
 }
 
@@ -781,41 +787,6 @@ void EatonProtocol::parse_overload_report(const HidReport &report, UpsData &data
     }
     ESP_LOGD(EATON_TAG, "Eaton UPS overload status: normal (raw: 0x%02X)", overload_byte);
   }
-}
-
-void EatonProtocol::parse_serial_number_report(const HidReport &report, UpsData &data) {
-  if (report.data.size() < 2) {
-    ESP_LOGW(EATON_TAG, "Serial number report too short: %zu bytes", report.data.size());
-    return;
-  }
-
-  // NUT debug shows: UPS.PowerSummary.iSerialNumber, ReportID: 0x02, Value: 2
-  // This is a USB string descriptor index, not the actual serial number
-  uint8_t string_index = report.data[1];
-
-  ESP_LOGD(EATON_TAG, "Serial number string descriptor index: %d", string_index);
-
-  // Use real USB string descriptor reading - this will get the actual Eaton serial number
-  // NUT shows: Eaton real serial = "CRMLX2000234"
-  std::string actual_serial;
-  esp_err_t ret = parent_->usb_get_string_descriptor(string_index, actual_serial);
-
-  if (ret == ESP_OK && !actual_serial.empty()) {
-    data.device.serial_number = actual_serial;
-    ESP_LOGI(EATON_TAG, "Successfully read Eaton serial number from USB string descriptor %d: \"%s\"",
-             string_index, data.device.serial_number.c_str());
-  } else {
-    // Fallback if USB string descriptor reading fails
-    ESP_LOGW(EATON_TAG, "Failed to read USB string descriptor %d: %s",
-             string_index, esp_err_to_name(ret));
-
-    // Set to unset state instead of generating fallback ID
-    data.device.serial_number.clear();
-    ESP_LOGW(EATON_TAG, "Leaving serial number unset due to USB string descriptor failure");
-  }
-
-  ESP_LOGD(EATON_TAG, "Serial number: %s (string index: %d)",
-           data.device.serial_number.c_str(), string_index);
 }
 */
 void EatonProtocol::read_missing_dynamic_values(UpsData &data) {
@@ -1310,33 +1281,47 @@ bool EatonProtocol::read_timer_data(UpsData &data) {
 
   return success;
 }
+*/
 
 // Delay configuration methods
 bool EatonProtocol::set_shutdown_delay(int seconds) {
   ESP_LOGI(EATON_TAG, "Setting shutdown delay to %d seconds", seconds);
 
-  // Validate range (0-7200 seconds = 0-2 hours)
-  if (seconds < 0 || seconds > 7200) {
-    ESP_LOGW(EATON_TAG, "Shutdown delay %d seconds out of range (0-7200)", seconds);
+  // Validate range (0-600 seconds = 0-10 minutes for APC) // FIXME
+  if (seconds < 0 || seconds > 600) {
+    ESP_LOGW(EATON_TAG, "Shutdown delay %d seconds out of range (0-600)", seconds);
     return false;
   }
 
+  // Check if device supports SET_REPORT operations
+  if (!parent_->is_connected()) {
+    ESP_LOGW(EATON_TAG, "Cannot set shutdown delay - device not connected");
+    return false;
+  }
+
+  // For APC Back-UPS ES 700G (INPUT-ONLY device), we need special handling
+  // These devices don't have OUT endpoints and may not support SET_REPORT
+  // We'll attempt control transfer anyway as it might work on some models
+
   // Prepare HID SET_REPORT data for shutdown delay
   // Format: Report ID 0x15, 2 bytes little-endian seconds value
-  uint8_t delay_data[3];
-  delay_data[0] = DELAY_SHUTDOWN_REPORT_ID;
-  delay_data[1] = seconds & 0xFF;           // Low byte
-  delay_data[2] = (seconds >> 8) & 0xFF;    // High byte
+  uint8_t delay_data[2];
+  delay_data[0] = seconds & 0xFF;           // Low byte
+  delay_data[1] = (seconds >> 8) & 0xFF;    // High byte
 
   ESP_LOGD(EATON_TAG, "Writing shutdown delay: Report 0x%02X, Value: %d (0x%02X 0x%02X)",
-           DELAY_SHUTDOWN_REPORT_ID, seconds, delay_data[1], delay_data[2]);
+           DELAY_SHUTDOWN_REPORT_ID, seconds, delay_data[0], delay_data[1]);
 
+  // Attempt SET_REPORT via control transfer (works even on INPUT-ONLY devices sometimes)
   esp_err_t ret = parent_->hid_set_report(HID_REPORT_TYPE_FEATURE, DELAY_SHUTDOWN_REPORT_ID,
-                                         delay_data + 1, 2, parent_->get_protocol_timeout());
+                                         delay_data, 2, parent_->get_protocol_timeout());
 
   if (ret == ESP_OK) {
     ESP_LOGI(EATON_TAG, "Shutdown delay set successfully to %d seconds", seconds);
     return true;
+  } else if (ret == ESP_ERR_NOT_SUPPORTED) {
+    ESP_LOGW(EATON_TAG, "Device does not support delay configuration (INPUT-ONLY device)");
+    return false;
   } else {
     ESP_LOGW(EATON_TAG, "Failed to set shutdown delay: %s", esp_err_to_name(ret));
     return false;
@@ -1346,28 +1331,36 @@ bool EatonProtocol::set_shutdown_delay(int seconds) {
 bool EatonProtocol::set_start_delay(int seconds) {
   ESP_LOGI(EATON_TAG, "Setting start delay to %d seconds", seconds);
 
-  // Validate range (0-7200 seconds = 0-2 hours)
-  if (seconds < 0 || seconds > 7200) {
-    ESP_LOGW(EATON_TAG, "Start delay %d seconds out of range (0-7200)", seconds);
+  // Validate range (0-600 seconds = 0-10 minutes for APC)
+  if (seconds < 0 || seconds > 600) {
+    ESP_LOGW(EATON_TAG, "Start delay %d seconds out of range (0-600)", seconds);
     return false;
   }
 
-  // Prepare HID SET_REPORT data for start delay
-  // Format: Report ID 0x16, 2 bytes little-endian seconds value
-  uint8_t delay_data[3];
-  delay_data[0] = DELAY_START_REPORT_ID;
-  delay_data[1] = seconds & 0xFF;           // Low byte
-  delay_data[2] = (seconds >> 8) & 0xFF;    // High byte
+  // Check if device supports SET_REPORT operations
+  if (!parent_->is_connected()) {
+    ESP_LOGW(EATON_TAG, "Cannot set start delay - device not connected");
+    return false;
+  }
 
-  ESP_LOGD(EATON_TAG, "Writing start delay: Report 0x%02X, Value: %d (0x%02X 0x%02X)",
-           DELAY_START_REPORT_ID, seconds, delay_data[1], delay_data[2]);
+  // APC uses report 0x40 for reboot/start delay
+  // Format: Report ID 0x40, 1 byte seconds value (limited to 255 seconds)
+  uint8_t delay_data[1];
+  delay_data[0] = std::min(seconds, 255);  // Limit to 255 for single byte
 
+  ESP_LOGD(EATON_TAG, "Writing start delay: Report 0x%02X, Value: %d (0x%02X)",
+           DELAY_START_REPORT_ID, delay_data[0], delay_data[0]);
+
+  // Attempt SET_REPORT via control transfer
   esp_err_t ret = parent_->hid_set_report(HID_REPORT_TYPE_FEATURE, DELAY_START_REPORT_ID,
-                                         delay_data + 1, 2, parent_->get_protocol_timeout());
+                                         delay_data, 1, parent_->get_protocol_timeout());
 
   if (ret == ESP_OK) {
-    ESP_LOGI(EATON_TAG, "Start delay set successfully to %d seconds", seconds);
+    ESP_LOGI(EATON_TAG, "Start delay set successfully to %d seconds", delay_data[0]);
     return true;
+  } else if (ret == ESP_ERR_NOT_SUPPORTED) {
+    ESP_LOGW(EATON_TAG, "Device does not support delay configuration (INPUT-ONLY device)");
+    return false;
   } else {
     ESP_LOGW(EATON_TAG, "Failed to set start delay: %s", esp_err_to_name(ret));
     return false;
@@ -1391,7 +1384,7 @@ bool EatonProtocol::set_reboot_delay(int seconds) {
     ESP_LOGW(EATON_TAG, "Failed to set reboot delay completely");
     return false;
   }
-}*/
+}
 
 
 }  // namespace ups_hid
