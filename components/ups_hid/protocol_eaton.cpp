@@ -6,6 +6,7 @@
 #include "freertos/task.h"
 #include "freertos/portmacro.h"
 #include "esp_err.h"
+#include "esp_log_buffer.h"
 #include "esphome/core/log.h"
 #include <algorithm>
 #include <cctype>
@@ -433,12 +434,14 @@ void EatonProtocol::parse_present_status_report(const HidReport &report, UpsData
     }
   }*/
 
-  ESP_LOGD(EATON_TAG, "Status: AC:%s Charging:%s OnBatt:%s Overload:%s BattStatus:\"%s\"",
+  ESP_LOGD(EATON_TAG, "Status: AC:%s Charging:%s Discharging:%s OnBatt:%s Overload:%s BattStatus:\"%s\" ShutdownImm:%s",
            ac_present ? "Yes" : "No",
            charging ? "Yes" : "No",
+           discharging ? "Yes" : "No",
            (!ac_present || discharging) ? "Yes" : "No",
            overload ? "Yes" : "No",
-           data.battery.status.c_str());
+           data.battery.status.c_str(),
+          shutdown_imminent ? "Yes" : "No" );
 }
 
 void EatonProtocol::parse_voltage_status_report(const HidReport &report, UpsData &data) {
@@ -637,17 +640,19 @@ void EatonProtocol::parse_input_transfer_low_report(const HidReport &report, Ups
 
 
 void EatonProtocol::parse_delay_shutdown_report(const HidReport &report, UpsData &data) {
-  if (report.data.size() < 3) {
+  if (report.data.size() < 5) {
     ESP_LOGW(EATON_TAG, "Delay shutdown report too short: %zu bytes", report.data.size());
     return;
   }
+
+  ESP_LOG_BUFFER_HEXDUMP(EATON_TAG, report.data.data(), sizeof(report.data), ESP_LOG_DEBUG);
 
   // Path: UPS.PowerSummary.DelayBeforeShutdown, Type: Feature, ReportID: 0x09, Offset: 0, Size: 32
 
   // NUT debug: ReportID: 0x09, Value: -1 (but NUT output shows ups.delay.shutdown: 20)
   // This suggests NUT does additional processing/conversion
   // Data format: [ID, delay_low, delay_high] - 16-bit signed little endian
-  int16_t delay_raw = static_cast<int16_t>(report.data[1] | (report.data[2] << 8));
+  int32_t delay_raw = static_cast<int32_t>(report.data[1] | (report.data[2] << 8 ) | (report.data[3] << 16 ) | (report.data[4] << 24 ));
 
   if (delay_raw == -1) {
     // When disabled, use NUT default for Eaton (DEFAULT_OFFDELAY = 20)
@@ -660,17 +665,20 @@ void EatonProtocol::parse_delay_shutdown_report(const HidReport &report, UpsData
 }
 
 void EatonProtocol::parse_delay_start_report(const HidReport &report, UpsData &data) {
-  if (report.data.size() < 3) {
+  if (report.data.size() < 5) {
     ESP_LOGW(EATON_TAG, "Delay start report too short: %zu bytes", report.data.size());
     return;
   }
+
+  ESP_LOG_BUFFER_HEXDUMP(EATON_TAG, report.data.data(), sizeof(report.data), ESP_LOG_DEBUG);
 
   // Path: UPS.PowerSummary.DelayBeforeStartup, Type: Feature, ReportID: 0x0a, Offset: 0, Size: 32
 
   // NUT debug: ReportID: 0x0a, Value: -1 (but NUT output shows ups.delay.start: 30)
   // This suggests NUT does additional processing/conversion
   // Data format: [ID, delay_low, delay_high] - 16-bit signed little endian
-  int16_t delay_raw = static_cast<int16_t>(report.data[1] | (report.data[2] << 8));
+  //int16_t delay_raw = static_cast<int16_t>(report.data[1] | (report.data[2] << 8));
+  int32_t delay_raw = static_cast<int32_t>(report.data[1] | (report.data[2] << 8 ) | (report.data[3] << 16 ) | (report.data[4] << 24 ));
 
   if (delay_raw == -1) {
     // When disabled, use NUT default for Eaton (DEFAULT_ONDELAY = 30)
@@ -1287,9 +1295,9 @@ bool EatonProtocol::read_timer_data(UpsData &data) {
 bool EatonProtocol::set_shutdown_delay(int seconds) {
   ESP_LOGI(EATON_TAG, "Setting shutdown delay to %d seconds", seconds);
 
-  // Validate range (0-600 seconds = 0-10 minutes for APC) // FIXME
-  if (seconds < 0 || seconds > 600) {
-    ESP_LOGW(EATON_TAG, "Shutdown delay %d seconds out of range (0-600)", seconds);
+  // Validate range (0-600 seconds = 0-10 minutes), but allow -1 to disable
+  if (seconds < -1 || seconds > 600) {
+    ESP_LOGW(EATON_TAG, "Shutdown delay %d seconds out of range (-1 to 600)", seconds);
     return false;
   }
 
@@ -1299,22 +1307,37 @@ bool EatonProtocol::set_shutdown_delay(int seconds) {
     return false;
   }
 
-  // For APC Back-UPS ES 700G (INPUT-ONLY device), we need special handling
-  // These devices don't have OUT endpoints and may not support SET_REPORT
-  // We'll attempt control transfer anyway as it might work on some models
-
   // Prepare HID SET_REPORT data for shutdown delay
-  // Format: Report ID 0x15, 2 bytes little-endian seconds value
-  uint8_t delay_data[2];
+  // Format: Report ID 0x15, 4 bytes little-endian seconds value
+  /*uint8_t delay_data[4];
   delay_data[0] = seconds & 0xFF;           // Low byte
   delay_data[1] = (seconds >> 8) & 0xFF;    // High byte
-
-  ESP_LOGD(EATON_TAG, "Writing shutdown delay: Report 0x%02X, Value: %d (0x%02X 0x%02X)",
-           DELAY_SHUTDOWN_REPORT_ID, seconds, delay_data[0], delay_data[1]);
+  delay_data[2] = (seconds >> 16) & 0xFF;    // High byte
+  delay_data[3] = (seconds >> 24) & 0xFF;    // High byte
+*/
+  uint8_t delay_data[5] = {
+    DELAY_SHUTDOWN_REPORT_ID,
+    seconds & 0xFF,
+    (seconds >> 8) & 0xFF,
+    (seconds >> 16) & 0xFF,
+    (seconds >> 24) & 0xFF
+  };
+/*
+  // Restore default FIXME
+  uint8_t delay_data[5] = {
+    DELAY_SHUTDOWN_REPORT_ID,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF
+  };
+*/
+  ESP_LOGD(EATON_TAG, "Writing shutdown delay: Report 0x%02X, Value: %d (0x%02X 0x%02X 0x%02X 0x%02X)",
+           DELAY_SHUTDOWN_REPORT_ID, seconds, delay_data[1], delay_data[2], delay_data[3], delay_data[4]);
 
   // Attempt SET_REPORT via control transfer (works even on INPUT-ONLY devices sometimes)
   esp_err_t ret = parent_->hid_set_report(HID_REPORT_TYPE_FEATURE, DELAY_SHUTDOWN_REPORT_ID,
-                                         delay_data, 2, parent_->get_protocol_timeout());
+                                         delay_data, sizeof(delay_data), parent_->get_protocol_timeout());
 
   if (ret == ESP_OK) {
     ESP_LOGI(EATON_TAG, "Shutdown delay set successfully to %d seconds", seconds);
@@ -1331,9 +1354,9 @@ bool EatonProtocol::set_shutdown_delay(int seconds) {
 bool EatonProtocol::set_start_delay(int seconds) {
   ESP_LOGI(EATON_TAG, "Setting start delay to %d seconds", seconds);
 
-  // Validate range (0-600 seconds = 0-10 minutes for APC)
-  if (seconds < 0 || seconds > 600) {
-    ESP_LOGW(EATON_TAG, "Start delay %d seconds out of range (0-600)", seconds);
+  // Validate range (0-600 seconds = 0-10 minutes), but allow -1 to disable
+  if (seconds < -1 || seconds > 600) {
+    ESP_LOGW(EATON_TAG, "Start delay %d seconds out of range (-1 to 600)", seconds);
     return false;
   }
 
