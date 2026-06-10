@@ -390,7 +390,7 @@ void EatonProtocol::parse_present_status_report(const HidReport &report, UpsData
 
   // Parse status bits (based on HID paths from debug)
   bool ac_present = (status_byte & 0x01) != 0;           // Offset 0
-  bool below_capacity_limit = (status_byte & 0x02) != 0; // Offset 1
+  bool below_capacity = (status_byte & 0x02) != 0; // Offset 1
   bool charging = (status_byte & 0x03) != 0;             // Offset 3
   bool communication_lost = (status_byte & 0x04) != 0;   // Offset 4
   bool discharging = (status_byte & 0x05) != 0;          // Offset 5
@@ -401,18 +401,17 @@ void EatonProtocol::parse_present_status_report(const HidReport &report, UpsData
   bool overload = report.data[2] != 0;
   bool shutdown_imminent = report.data[3] != 0;
 
-  /*
-  bool low_battery = (status_byte & 0x08) != 0;          // Offset 3
-  bool fully_charged = (status_byte & 0x10) != 0;        // Offset 4
-  bool time_limit_expired = (status_byte & 0x20) != 0;   // Offset 5
-*/
-  // Update power status based on AC presence
-  if (ac_present && !discharging) {
+  // Update power status based on AC presence (as described in MGE-SHUT documentation)
+  if (ac_present) {
     data.power.input_voltage = parent_->get_fallback_nominal_voltage();  // Use configured fallback voltage when AC present
     data.power.status = status::ONLINE;
   } else {
     data.power.input_voltage = NAN;     // No AC input
     data.power.status = status::ON_BATTERY;
+  }
+
+  if (overload) {
+    data.power.status += " - Overload";
   }
 
   // Set battery status based on charging/discharging state
@@ -426,13 +425,17 @@ void EatonProtocol::parse_present_status_report(const HidReport &report, UpsData
     data.battery.status = battery_status::NORMAL;
   }
 
-  // Set low battery indicators
-  /*if (low_battery || time_limit_expired) {
+  // Handle battery issues
+  if (below_capacity || shutdown_imminent) {
     data.battery.charge_low = battery::LOW_THRESHOLD_PERCENT;  // Indicate low battery threshold
-    if (time_limit_expired) {
-      data.battery.status += battery_status::TIME_LIMIT_EXPIRED_SUFFIX;
+    if (shutdown_imminent) {
+      data.battery.status += battery_status::SHUTDOWN_IMMINENT_SUFFIX;
     }
-  }*/
+  }
+
+  if (need_replacement) {
+    data.battery.status += battery_status::REPLACE_BATTERY_SUFFIX;
+  }
 
   ESP_LOGD(EATON_TAG, "Status: AC:%s Charging:%s Discharging:%s OnBatt:%s Overload:%s BattStatus:\"%s\" ShutdownImm:%s",
            ac_present ? "Yes" : "No",
