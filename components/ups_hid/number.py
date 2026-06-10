@@ -33,7 +33,7 @@ CONFIG_SCHEMA = number.number_schema(
     {
         cv.GenerateID(CONF_UPS_HID_ID): cv.use_id(UpsHidComponent),
         cv.Required(CONF_DELAY_TYPE): cv.enum(DELAY_TYPES, lower=True),
-        cv.Optional("min_value", default=0): cv.float_range(min=0, max=3600),
+        cv.Optional("min_value", default=0): cv.float_range(min=-1, max=3600),
         cv.Optional("max_value", default=600): cv.float_range(min=0, max=7200),
         cv.Optional("step", default=10): cv.positive_float,
     }
@@ -46,7 +46,7 @@ async def to_code(config):
         max_value=config["max_value"],
         step=config["step"],
     )
-    
+
     ups_hid = await cg.get_variable(config[CONF_UPS_HID_ID])
     cg.add(var.set_parent(ups_hid))
     cg.add(var.set_delay_type(config[CONF_DELAY_TYPE]))
