@@ -16,6 +16,16 @@ namespace ups_hid {
 
 static const char *const EATON_TAG = "ups_hid.eaton_hid";
 
+// Present Status bitmasks
+static const uint8_t EATON_PRESENT_AC_PRESENT               = 0x01;
+static const uint8_t EATON_PRESENT_BELOW_REMAINING_CAPACITY = 0x02;
+static const uint8_t EATON_PRESENT_CHARGING                 = 0x04;
+static const uint8_t EATON_PRESENT_COMMUNICATION_LOST       = 0x08;
+static const uint8_t EATON_PRESENT_DISCHARGING              = 0x10;
+static const uint8_t EATON_PRESENT_GOOD                     = 0x20;
+static const uint8_t EATON_PRESENT_INTERNAL_FAILURE         = 0x40;
+static const uint8_t EATON_PRESENT_NEED_REPLACEMENT         = 0x80;
+
 bool EatonProtocol::detect() {
   ESP_LOGD(EATON_TAG, "Detecting Eaton HID protocol");
 
@@ -389,17 +399,17 @@ void EatonProtocol::parse_present_status_report(const HidReport &report, UpsData
   // Path: UPS.PowerSummary.PresentStatus.Overload, Type: Feature, ReportID: 0x01, Offset: 8, Size: 8
 
   // Parse status bits (based on HID paths from debug)
-  bool ac_present = (status_byte & 0x01) != 0;           // Offset 0
-  bool below_capacity = (status_byte & 0x02) != 0; // Offset 1
-  bool charging = (status_byte & 0x03) != 0;             // Offset 3
-  bool communication_lost = (status_byte & 0x04) != 0;   // Offset 4
-  bool discharging = (status_byte & 0x05) != 0;          // Offset 5
-  bool good = (status_byte & 0x06) != 0;                 // Offset 6
-  bool internal_failure = (status_byte & 0x07) != 0;     // Offset 7
-  bool need_replacement = (status_byte & 0x08) != 0;     // Offset 8
+  bool ac_present         = status_byte & EATON_PRESENT_AC_PRESENT;
+  bool below_capacity     = status_byte & EATON_PRESENT_BELOW_REMAINING_CAPACITY;
+  bool charging           = status_byte & EATON_PRESENT_CHARGING;
+  bool communication_lost = status_byte & EATON_PRESENT_COMMUNICATION_LOST;
+  bool discharging        = status_byte & EATON_PRESENT_DISCHARGING;
+  bool good               = status_byte & EATON_PRESENT_GOOD;
+  bool internal_failure   = status_byte & EATON_PRESENT_INTERNAL_FAILURE;
+  bool need_replacement   = status_byte & EATON_PRESENT_NEED_REPLACEMENT;
 
-  bool overload = report.data[2] != 0;
-  bool shutdown_imminent = report.data[3] != 0;
+  bool overload           = report.data[2] != 0;
+  bool shutdown_imminent  = report.data[3] != 0;
 
   // Update power status based on AC presence (as described in MGE-SHUT documentation)
   if (ac_present) {
@@ -437,14 +447,15 @@ void EatonProtocol::parse_present_status_report(const HidReport &report, UpsData
     data.battery.status += battery_status::REPLACE_BATTERY_SUFFIX;
   }
 
-  ESP_LOGD(EATON_TAG, "Status: AC:%s Charging:%s Discharging:%s OnBatt:%s Overload:%s BattStatus:\"%s\" ShutdownImm:%s",
+  ESP_LOGD(EATON_TAG, "Status: AC:%s Charging:%s Discharging:%s OnBatt:%s Overload:%s BattStatus:\"%s\" ShutdownImm:%s (raw: 0x%X)",
            ac_present ? "Yes" : "No",
            charging ? "Yes" : "No",
            discharging ? "Yes" : "No",
            (!ac_present || discharging) ? "Yes" : "No",
            overload ? "Yes" : "No",
            data.battery.status.c_str(),
-          shutdown_imminent ? "Yes" : "No" );
+           shutdown_imminent ? "Yes" : "No",
+           status_byte);
 }
 
 void EatonProtocol::parse_voltage_status_report(const HidReport &report, UpsData &data) {
