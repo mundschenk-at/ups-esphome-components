@@ -298,6 +298,8 @@ void NutServerComponent::process_command(NutClient &client, const std::string &c
   // Convert command to uppercase for comparison
   std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::toupper);
 
+  ESP_LOGD(TAG, "Transformed command: '%s'", cmd.c_str());
+
   // Commands that don't require authentication
   if (cmd == "HELP") {
     handle_help(client);
@@ -320,10 +322,16 @@ void NutServerComponent::process_command(NutClient &client, const std::string &c
   }
   // Commands requiring authentication
   else if (!password_.empty() && !client.is_authenticated()) {
+    ESP_LOGD(TAG, "Client not authenticated");
+
     send_error(client, "ACCESS-DENIED");
   } else {
-    // Authenticated commands
+    // Authenticated command
+    ESP_LOGD(TAG, "Other command '%s'", cmd.c_str());
+
     if (cmd == "LIST") {
+      ESP_LOGD(TAG, "Handling LIST command");
+
       // Parse LIST subcommand
       size_t sub_pos = args.find(' ');
       std::string subcmd = (sub_pos != std::string::npos) ?
@@ -332,6 +340,8 @@ void NutServerComponent::process_command(NutClient &client, const std::string &c
                             args.substr(sub_pos + 1) : "";
 
       std::transform(subcmd.begin(), subcmd.end(), subcmd.begin(), ::toupper);
+
+      ESP_LOGD(TAG, "LIST Subcommand: '%s'", subcmd.c_str());
 
       if (subcmd == "UPS") {
         handle_list_ups(client);
@@ -444,6 +454,8 @@ void NutServerComponent::handle_logout(NutClient &client) {
 void NutServerComponent::handle_list_ups(NutClient &client) {
   std::string ups_name = get_ups_name();
   std::string ups_description = get_ups_description();
+
+  ESP_LOGD(TAG, "Handling LIST UPS");
 
   std::string response = "BEGIN LIST UPS\n";
   response += "UPS " + ups_name + " \"" + ups_description + "\"\n";
