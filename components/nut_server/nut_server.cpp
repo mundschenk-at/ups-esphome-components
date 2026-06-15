@@ -293,7 +293,7 @@ void NutServerComponent::process_command(NutClient &client, const std::string &c
                       command.substr(space_pos + 1) : "";
 
   // Debug: Log all received commands
-  ESP_LOGD(TAG, "Received command: '%s' args: '%s'", cmd.c_str(), args.c_str());
+  ESP_LOGD(TAG, "Received command: '%s' args: '%s' (from %s)", cmd.c_str(), args.c_str(), client.remote_ip.c_str());
 
   // Convert command to uppercase for comparison
   std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::toupper);
