@@ -242,7 +242,7 @@ void NutServerComponent::handle_client(NutClient &client) {
 
   } else if (bytes_received == 0) {
     // Client disconnected
-    ESP_LOGD(TAG, "Client disconnected");
+    ESP_LOGD(TAG, "Client disconnected (0 bytes received from %s)", client.remote_ip.c_str());
     disconnect_client(client);
   } else {
     if (errno != EWOULDBLOCK && errno != EAGAIN) {
@@ -274,7 +274,7 @@ void NutServerComponent::cleanup_inactive_clients() {
 
   for (auto &client : clients_) {
     if (client.is_active() && (now - client.last_activity) > CLIENT_TIMEOUT_MS) {
-      ESP_LOGD(TAG, "Client timeout, disconnecting %s", client.remote_ip.c_str());
+      ESP_LOGD(TAG, "Client timeout, disconnecting %s (now %d, last_activity %d)", client.remote_ip.c_str(), now, client.last_activity);
       disconnect_client(client);
     }
   }
