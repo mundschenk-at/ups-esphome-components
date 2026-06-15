@@ -237,7 +237,7 @@ void NutServerComponent::handle_client(NutClient &client) {
 
     client.last_activity = millis();
 
-    ESP_LOGV(TAG, "Received command: %s", buffer);
+    ESP_LOGV(TAG, "Received command: %s from %s", buffer, client.remote_ip.c_str());
     process_command(client, std::string(buffer));
 
   } else if (bytes_received == 0) {
@@ -274,7 +274,7 @@ void NutServerComponent::cleanup_inactive_clients() {
 
   for (auto &client : clients_) {
     if (client.is_active() && (now - client.last_activity) > CLIENT_TIMEOUT_MS) {
-      ESP_LOGD(TAG, "Client timeout, disconnecting");
+      ESP_LOGD(TAG, "Client timeout, disconnecting %s", client.remote_ip.c_str());
       disconnect_client(client);
     }
   }
