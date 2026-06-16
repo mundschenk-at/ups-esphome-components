@@ -41,10 +41,10 @@ bool EatonProtocol::detect() {
   // Test multiple report IDs that are known to work with Eaton devices
   // Based on NUT debug logs
   const uint8_t test_report_ids[] = {
-    0x06, // Battery % + Runtime (primary data)
-    0x01, // Status bitmap (PresentStatus)
-    0x0e, // Input voltage
-    0x07 // Load percentage
+    BATTERY_RUNTIME_REPORT_ID,
+    PRESENT_STATUS_REPORT_ID,
+    OUTPUT_VOLTAGE_REPORT_ID,
+    BATTERY_SYSTEM_REPORT_ID
   };
 
   HidReport test_report;
