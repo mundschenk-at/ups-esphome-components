@@ -95,7 +95,7 @@ bool EatonProtocol::read_data(UpsData &data) {
   }
 
   // Core sensors (essential for operation)
-  // Read battery capacity limits (Report 0x08) - includes FullChargeCapacity for battery.status
+  // Read battery capacity limits (Report 0x08)
   HidReport battery_capacity_report;
   if (read_hid_report(BATTERY_CAPACITY_REPORT_ID, battery_capacity_report)) {
     parse_battery_capacity_report(battery_capacity_report, data);
@@ -142,9 +142,10 @@ bool EatonProtocol::read_data(UpsData &data) {
     parse_battery_system_report(battery_system_report, data);
     success = true;
   }
-/*
+
   // Additional sensors (enhance functionality)
   // Read battery voltage (Report 0x0a)
+/*
   HidReport battery_voltage_report;
   if (read_hid_report(BATTERY_VOLTAGE_REPORT_ID, battery_voltage_report)) {
     parse_battery_voltage_report(battery_voltage_report, data);
@@ -168,7 +169,6 @@ bool EatonProtocol::read_data(UpsData &data) {
   if (read_hid_report(INPUT_TRANSFER_LOW_REPORT_ID, input_transfer_low_report)) {
     parse_input_transfer_low_report(input_transfer_low_report, data);
   }
-
 
   // Read delay settings (Reports 0x09, 0x0a)
   HidReport delay_shutdown_report;
@@ -853,26 +853,10 @@ void EatonProtocol::parse_battery_capacity_report(const HidReport &report, UpsDa
 
   // Path: UPS.PowerSummary.RemainingCapacityLimit, Type: Feature, ReportID: 0x08, Offset: 0, Size: 8
 
-  // NUT debug shows Report 0x07 contains multiple capacity values at different offsets:
-  // Offset 24: WarningCapacityLimit = 20
-  // Offset 32: RemainingCapacityLimit = 10
-  // Data format: [ID, byte1, byte2, byte3, byte4, byte5, ...]
-
-  // Extract warning capacity limit (offset 24 = byte 4)
-  if (report.data.size() > 4) {
-    uint8_t warning_limit = report.data[4]; // Offset 24 bits = byte 3 + 1
-    data.battery.charge_warning = static_cast<float>(warning_limit);
-    ESP_LOGI(EATON_TAG, "Eaton Battery charge warning threshold: %.0f%% (raw: %d)",
-             data.battery.charge_warning, warning_limit);
-  }
-
-  // Extract remaining capacity limit (offset 32 = byte 5)
-  //if (report.data.size() > 5) {
-    uint8_t remaining_limit = report.data[1]; // Offset 8 bits = byte 0 + 1
-    data.battery.charge_low = static_cast<float>(remaining_limit);
-    ESP_LOGI(EATON_TAG, "Eaton Battery charge low threshold: %.0f%% (raw: %d)",
-             data.battery.charge_low, remaining_limit);
-  //}
+  uint8_t remaining_limit = report.data[1]; // Offset 8 bits = byte 0 + 1
+  data.battery.charge_low = static_cast<float>(remaining_limit);
+  ESP_LOGI(EATON_TAG, "Eaton Battery charge low threshold: %.0f%% (raw: %d)",
+            data.battery.charge_low, remaining_limit);
 
   // Extract full charge capacity (offset 40 = byte 6) - this is NOT used for battery.status
   // FullChargeCapacity represents maximum capacity (100%), not current status
