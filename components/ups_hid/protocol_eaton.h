@@ -24,6 +24,9 @@ class EatonProtocol : public UpsProtocolBase {
   bool beeper_mute() override;
   bool beeper_test() override;
 
+  // Low capacity limit setting methods (should be declared in base method)
+  bool set_remaining_capacity_limit(uint8_t percent);
+
   /*
   // UPS and battery test methods
   bool start_battery_test_quick() override;
@@ -56,7 +59,7 @@ class EatonProtocol : public UpsProtocolBase {
   static const uint8_t INPUT_TRANSFER_HIGH_REPORT_ID = 0x13;     // Input transfer limits
   static const uint8_t INPUT_TRANSFER_LOW_REPORT_ID = 0x14;      // Input transfer limits
   static const uint8_t BEEPER_STATUS_REPORT_ID = 0x1f;           // Beeper status
-  static const uint8_t CAPACITY_LMIT_SETTING_REPORT_ID = 0x22;   // Remaining capacity limit setting
+  static const uint8_t CAPACITY_LIMIT_SETTING_REPORT_ID = 0x22;  // Remaining capacity limit setting
 
   // Path: UPS.PowerSummary.PresentStatus.ACPresent, Type: Feature, ReportID: 0x01, Offset: 0, Size: 1
   // Path: UPS.PowerSummary.PresentStatus.BelowRemainingCapacityLimit, Type: Feature, ReportID: 0x01, Offset: 1, Size: 1,
@@ -169,11 +172,9 @@ class EatonProtocol : public UpsProtocolBase {
   void parse_input_transfer_high_report(const HidReport &report, UpsData &data);
   void parse_input_transfer_low_report(const HidReport &report, UpsData &data);
   void parse_beeper_status_report(const HidReport &report, UpsData &data);
-  //void parse_capacity_limit_setting_report(const HidReport &report, UpsData &data);
 
   // Missing dynamic values from NUT analysis
   void read_missing_dynamic_values(UpsData &data);
-  void parse_battery_capacity_limits_report(const HidReport &report, UpsData &data);
 
   // Retrieve device information strings
   bool read_usb_descriptor(uint8_t index, std::string &string, const std::string &info);

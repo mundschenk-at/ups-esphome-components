@@ -599,6 +599,32 @@ void EatonProtocol::parse_beeper_status_report(const HidReport &report, UpsData 
            data.config.beeper_status.c_str(), beeper_raw, beeper_raw);
 }
 
+bool EatonProtocol::set_remaining_capacity_limit(uint8_t percent) {
+  if (percent > 100) {
+    ESP_LOGW(EATON_TAG, "Invalid percentage %d for remaining capacity limit", percent);
+  }
+
+  ESP_LOGD(EATON_TAG, "Setting remaining capacity limit to %d", percent);
+
+  // Eaton DEVICE SPECIFIC: From NUT debug, device uses report ID 0x22
+  // Path: UPS.PowerSummary.RemainingCapacityLimitSetting, Type: Feature, ReportID: 0x22, Offset: 0, Size: 8
+  ESP_LOGD(EATON_TAG, "Trying to set remaining capacity limit to %d with report ID 0x%02X",
+    percent, CAPACITY_LIMIT_SETTING_REPORT_ID);
+
+  uint8_t capacity_limit_data[2] = {CAPACITY_LIMIT_SETTING_REPORT_ID, percent};  // Report ID, Value=<percent>
+
+  esp_err_t ret = parent_->hid_set_report(HID_REPORT_TYPE_FEATURE, CAPACITY_LIMIT_SETTING_REPORT_ID, capacity_limit_data, sizeof(capacity_limit_data), parent_->get_protocol_timeout());
+  if (ret == ESP_OK) {
+    ESP_LOGI(EATON_TAG, "Eaton remaining capacity limit successfully set to %d with report ID 0x%02X",
+      percent, CAPACITY_LIMIT_SETTING_REPORT_ID);
+    return true;
+  } else {
+    ESP_LOGW(EATON_TAG, "Failed to set Eaton remaining capacity limit to %d with report ID 0x%02X: %s",
+      percent, CAPACITY_LIMIT_SETTING_REPORT_ID, esp_err_to_name(ret));
+    return false;
+  }
+}
+
 void EatonProtocol::parse_config_voltage_report(const HidReport &report, UpsData &data) {
   if (report.data.size() < 2) {
     ESP_LOGW(EATON_TAG, "Config voltage report too short: %zu bytes", report.data.size());
