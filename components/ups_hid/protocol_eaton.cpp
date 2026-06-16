@@ -205,6 +205,10 @@ bool EatonProtocol::read_data(UpsData &data) {
     parse_beeper_status_report(beeper_status_report, data);
   }
 
+  // FIXME
+  set_remaining_capacity_limit(30);
+  // FIXME
+
   // Set frequency to NaN - not available for Eaton CP1500 model
   // Try to read frequency from HID reports
   read_frequency_data(data);
