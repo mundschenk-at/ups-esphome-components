@@ -163,9 +163,9 @@ class EatonProtocol : public UpsProtocolBase {
   void parse_battery_runtime_report(const HidReport &report, UpsData &data);
   void parse_battery_system_report(const HidReport &report, UpsData &data);
   void parse_battery_capacity_report(const HidReport &report, UpsData &data);
+  void parse_battery_static_capacity_report(const HidReport &report, UpsData &data);
   void parse_delay_shutdown_report(const HidReport &report, UpsData &data);
   void parse_delay_start_report(const HidReport &report, UpsData &data);
-  void parse_battery_static_capacity_report(const HidReport &report, UpsData &data);
   void parse_output_voltage_report(const HidReport &report, UpsData &data);
   void parse_device_information_report(const HidReport &repor, UpsData &data);
   void parse_config_voltage_report(const HidReport &report, UpsData &data);

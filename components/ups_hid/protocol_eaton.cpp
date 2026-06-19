@@ -181,6 +181,12 @@ bool EatonProtocol::read_data(UpsData &data) {
     parse_delay_start_report(delay_start_report, data);
   }
 
+  // Read battery design capacity (Report 0x0c)
+  HidReport battery_static_capcity_report;
+  if (read_hid_report(BATTERY_STATIC_CAPACITY_REPORT_ID, battery_static_capcity_report)) {
+    parse_battery_static_capacity_report(battery_static_capcity_report, data);
+  }
+
   // Read nominal power (Report 0x18)
   /*HidReport realpower_nominal_report;
   if (read_hid_report(REALPOWER_NOMINAL_REPORT_ID, realpower_nominal_report)) {
@@ -206,7 +212,7 @@ bool EatonProtocol::read_data(UpsData &data) {
   }
 
   // FIXME
-  set_remaining_capacity_limit(30);
+  // set_remaining_capacity_limit(30);
   // FIXME
 
   // Set frequency to NaN - not available for Eaton CP1500 model
@@ -887,14 +893,35 @@ void EatonProtocol::parse_battery_capacity_report(const HidReport &report, UpsDa
   data.battery.charge_low = static_cast<float>(remaining_limit);
   ESP_LOGI(EATON_TAG, "Eaton Battery charge low threshold: %.0f%% (raw: %d)",
             data.battery.charge_low, remaining_limit);
+}
+
+void EatonProtocol::parse_battery_static_capacity_report(const HidReport &report, UpsData &data) {
+  if (report.data.size() < 8) {
+    ESP_LOGW(EATON_TAG, "Battery static capacity report too short: %zu bytes", report.data.size());
+    return;
+  }
+
+  // Path: UPS.OutletSystem.Outlet.[1].PresentStatus.Switchable, Type: Feature, ReportID: 0x0c, Offset: 0, Size: 8
+  // Path: UPS.PowerConverter.ConverterType, Type: Feature, ReportID: 0x0c, Offset: 8, Size: 8
+  // Path: UPS.PowerSummary.CapacityGranularity1, Type: Feature, ReportID: 0x0c, Offset: 16, Size: 8
+  // Path: UPS.PowerSummary.CapacityMode, Type: Feature, ReportID: 0x0c, Offset: 24, Size: 8
+  // Path: UPS.PowerSummary.DesignCapacity, Type: Feature, ReportID: 0x0c, Offset: 32, Size: 8
+  // Path: UPS.PowerSummary.FullChargeCapacity, Type: Feature, ReportID: 0x0c, Offset: 40, Size: 8
+  // Path: UPS.PowerSummary.ffff00e2, Type: Feature, ReportID: 0x0c, Offset: 48, Size: 8
+
+  ESP_LOGD(EATON_TAG, "UPS.OutletSystem.Outlet.[1].PresentStatus.Switchable: 0x%02X = %d", report.data[1], report.data[1]);
+  ESP_LOGD(EATON_TAG, "UPS.PowerConverter.ConverterType: 0x%02X = %d", report.data[2], report.data[2]);
+  ESP_LOGD(EATON_TAG, "UPS.PowerSummary.CapacityGranularity1: 0x%02X = %d", report.data[3], report.data[3]);
+  ESP_LOGD(EATON_TAG, "UPS.PowerSummary.CapacityMode: 0x%02X = %d", report.data[4], report.data[4]);
+  ESP_LOGD(EATON_TAG, "UPS.PowerSummary.DesignCapacity: 0x%02X = %d", report.data[5], report.data[5]);
+  ESP_LOGD(EATON_TAG, "UPS.PowerSummary.ffff00e2: 0x%02X = %d", report.data[7], report.data[7]);
 
   // Extract full charge capacity (offset 40 = byte 6) - this is NOT used for battery.status
   // FullChargeCapacity represents maximum capacity (100%), not current status
-  /*if (report.data.size() > 6) {
-    uint8_t full_charge_capacity = report.data[6]; // Offset 40 bits = byte 5 + 1
-    ESP_LOGD(EATON_TAG, "Eaton FullChargeCapacity: %d%% (always 100%% for healthy battery)", full_charge_capacity);
-    // Note: battery_status is now set from charging state in parse_present_status_report
-  }*/
+  uint8_t full_charge_capacity = report.data[6]; // Offset 40 bits = byte 5 + 1
+  ESP_LOGD(EATON_TAG, "Eaton UPS.PowerSummary.FullChargeCapacity: %d%% (always 100%% for healthy battery)", full_charge_capacity);
+    // Note: battery_status is set from charging state in parse_present_status_report
+  }
 }
 
 bool EatonProtocol::beeper_enable() {
