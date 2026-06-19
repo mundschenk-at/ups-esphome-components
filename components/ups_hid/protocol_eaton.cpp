@@ -921,19 +921,7 @@ void EatonProtocol::parse_battery_static_capacity_report(const HidReport &report
   uint8_t full_charge_capacity = report.data[6]; // Offset 40 bits = byte 5 + 1
   ESP_LOGD(EATON_TAG, "Eaton UPS.PowerSummary.FullChargeCapacity: %d%% (always 100%% for healthy battery)", full_charge_capacity);
   // Note: battery_status is set from charging state in parse_present_status_report
-
-  ESP_LOGD(EATON_TAG, "Trying to change capacity mode to mAh");
-
-  uint8_t capacity_data[8] = {BATTERY_STATIC_CAPACITY_REPORT_ID, report.data[1], report.data[2], report.data[3], 0, report.data[5], report.data[6], report.data[7]};
-
-  esp_err_t ret = parent_->hid_set_report(HID_REPORT_TYPE_FEATURE, BATTERY_STATIC_CAPACITY_REPORT_ID, capacity_data, sizeof(capacity_data), parent_->get_protocol_timeout());
-  if (ret == ESP_OK) {
-    ESP_LOGI(EATON_TAG, "Eaton capacity mode successfully changed with report ID 0x%02X", BATTERY_STATIC_CAPACITY_REPORT_ID);
-  } else {
-    ESP_LOGW(EATON_TAG, "Failed to change capacity mode with report ID 0x%02X: %s", BATTERY_STATIC_CAPACITY_REPORT_ID, esp_err_to_name(ret));
-  }
 }
-
 
 bool EatonProtocol::beeper_enable() {
   ESP_LOGD(EATON_TAG, "Sending Eaton beeper enable command");
