@@ -1349,9 +1349,9 @@ bool EatonProtocol::read_timer_data(UpsData &data) {
 bool EatonProtocol::set_shutdown_delay(int seconds) {
   ESP_LOGI(EATON_TAG, "Setting shutdown delay to %d seconds", seconds);
 
-  // Validate range (0-600 seconds = 0-10 minutes), but allow -1 to disable
-  if (seconds < -1 || seconds > 600) {
-    ESP_LOGW(EATON_TAG, "Shutdown delay %d seconds out of range (-1 to 600)", seconds);
+  // Validate range (0-7200 seconds = 0-2 hours), but allow -1 to disable
+  if (seconds < -1 || seconds > 7200) {
+    ESP_LOGW(EATON_TAG, "Shutdown delay %d seconds out of range (-1 to 7200)", seconds);
     return false;
   }
 
@@ -1362,19 +1362,13 @@ bool EatonProtocol::set_shutdown_delay(int seconds) {
   }
 
   // Prepare HID SET_REPORT data for shutdown delay
-  // Format: Report ID 0x15, 4 bytes little-endian seconds value
-  /*uint8_t delay_data[4];
-  delay_data[0] = seconds & 0xFF;           // Low byte
-  delay_data[1] = (seconds >> 8) & 0xFF;    // High byte
-  delay_data[2] = (seconds >> 16) & 0xFF;    // High byte
-  delay_data[3] = (seconds >> 24) & 0xFF;    // High byte
-*/
+  // Format: Report ID 0x09, 4 bytes little-endian seconds value
   uint8_t delay_data[5] = {
     DELAY_SHUTDOWN_REPORT_ID,
-    seconds & 0xFF,
-    (seconds >> 8) & 0xFF,
-    (seconds >> 16) & 0xFF,
-    (seconds >> 24) & 0xFF
+    static_cast<uint8_t>(seconds & 0xFF),
+    static_cast<uint8_t>((seconds >> 8) & 0xFF),
+    static_cast<uint8_t>((seconds >> 16) & 0xFF),
+    static_cast<uint8_t>((seconds >> 24) & 0xFF)
   };
 /*
   // Restore default FIXME
@@ -1408,9 +1402,9 @@ bool EatonProtocol::set_shutdown_delay(int seconds) {
 bool EatonProtocol::set_start_delay(int seconds) {
   ESP_LOGI(EATON_TAG, "Setting start delay to %d seconds", seconds);
 
-  // Validate range (0-600 seconds = 0-10 minutes), but allow -1 to disable
-  if (seconds < -1 || seconds > 600) {
-    ESP_LOGW(EATON_TAG, "Start delay %d seconds out of range (-1 to 600)", seconds);
+  // Validate range (0-7200 seconds = 0-2 hours), but allow -1 to disable
+  if (seconds < -1 || seconds > 7200) {
+    ESP_LOGW(EATON_TAG, "Start delay %d seconds out of range (-1 to 7200)", seconds);
     return false;
   }
 
@@ -1420,20 +1414,25 @@ bool EatonProtocol::set_start_delay(int seconds) {
     return false;
   }
 
-  // APC uses report 0x40 for reboot/start delay
-  // Format: Report ID 0x40, 1 byte seconds value (limited to 255 seconds)
-  uint8_t delay_data[1];
-  delay_data[0] = std::min(seconds, 255);  // Limit to 255 for single byte
+  // Prepare HID SET_REPORT data for start delay
+  // Format: Report ID 0x0a, 4 bytes little-endian seconds value
+  uint8_t delay_data[5] = {
+    DELAY_START_REPORT_ID,
+    static_cast<uint8_t>(seconds & 0xFF),
+    static_cast<uint8_t>((seconds >> 8) & 0xFF),
+    static_cast<uint8_t>((seconds >> 16) & 0xFF),
+    static_cast<uint8_t>((seconds >> 24) & 0xFF)
+  };
 
-  ESP_LOGD(EATON_TAG, "Writing start delay: Report 0x%02X, Value: %d (0x%02X)",
-           DELAY_START_REPORT_ID, delay_data[0], delay_data[0]);
+  ESP_LOGD(EATON_TAG, "Writing start delay: Report 0x%02X, Value: %d (0x%02X 0x%02X 0x%02X 0x%02X)",
+           DELAY_START_REPORT_ID, seconds, delay_data[1], delay_data[2], delay_data[3], delay_data[4]);
 
   // Attempt SET_REPORT via control transfer
   esp_err_t ret = parent_->hid_set_report(HID_REPORT_TYPE_FEATURE, DELAY_START_REPORT_ID,
-                                         delay_data, 1, parent_->get_protocol_timeout());
+                                         delay_data, sizeof(delay_data), parent_->get_protocol_timeout());
 
   if (ret == ESP_OK) {
-    ESP_LOGI(EATON_TAG, "Start delay set successfully to %d seconds", delay_data[0]);
+    ESP_LOGI(EATON_TAG, "Start delay set successfully to %d seconds", seconds);
     return true;
   } else if (ret == ESP_ERR_NOT_SUPPORTED) {
     ESP_LOGW(EATON_TAG, "Device does not support delay configuration (INPUT-ONLY device)");
